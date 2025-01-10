@@ -1,0 +1,54 @@
+BOUNTY HOLD'EM - OFFICIAL RULES
+============================
+
+OVERVIEW
+--------
+Bounty Hold'em is a variant of No-Limit Texas Hold'em with a special bounty system that rewards players for winning with specific card ranks.
+
+BASIC STRUCTURE
+--------------
+- 1000 rounds between 2 players
+- Each round starts with 400 chips per player
+- Small blind: 1 chip
+- Big blind: 2 chips
+- Standard Texas Hold'em betting rounds:
+  1. Pre-flop (after hole cards)
+  2. Flop (first 3 community cards)
+  3. Turn (4th community card)
+  4. River (5th community card)
+
+BOUNTY SYSTEM
+------------
+- Every 25 rounds, players receive a hidden bounty rank (e.g., 'A', '5', 'K')
+- Bounty activates when a player wins AND their bounty rank appears in either:
+  * Their hole cards
+  * The community cards
+
+BOUNTY PAYOUTS
+-------------
+Standard Formula:
+[Winnings with bounty] = 1.5 × [normal winnings] + 10
+
+Split Pot Scenarios:
+- One player hits bounty: Receives (1/4 × opponent's chips) + 10
+- Both/neither hit bounty: Standard split
+
+Rounding Rules:
+- Non-dealer winner: Round up
+- Dealer winner: Round down
+
+WINNING THE GAME
+---------------
+- Player with highest cumulative bankroll after 1000 rounds wins
+- Each round is zero-sum (one player's win is other's loss)
+- Bankroll starts at 0 and accumulates across rounds
+
+STANDARD POKER RULES
+-------------------
+- Standard poker hand rankings apply
+- Standard betting rules (check, bet, call, raise, fold)
+- Players can use any combination of hole cards and community cards
+- Minimum raise is previous bet/raise size
+- Maximum raise is limited by remaining stack sizes
+
+Note: For detailed Texas Hold'em rules, visit pkr.bot/poker-rules
