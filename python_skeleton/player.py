@@ -83,12 +83,12 @@ class Player(Bot):
         Returns:
         Nothing.
         '''
-        #my_bankroll = game_state.bankroll  # the total number of chips you've gained or lost from the beginning of the game to the start of this round
-        #game_clock = game_state.game_clock  # the total number of seconds your bot has left to play this game
-        #round_num = game_state.round_num  # the round number from 1 to NUM_ROUNDS
-        #my_cards = round_state.hands[active]  # your cards
-        #big_blind = bool(active)  # True if you are the big blind
-        #my_bounty = round_state.bounties[active]  # your current bounty rank
+        my_bankroll = game_state.bankroll  # the total number of chips you've gained or lost from the beginning of the game to the start of this round
+        game_clock = game_state.game_clock  # the total number of seconds your bot has left to play this game
+        round_num = game_state.round_num  # the round number from 1 to NUM_ROUNDS
+        my_cards = round_state.hands[active]  # your cards
+        big_blind = bool(active)  # True if you are the big blind
+        my_bounty = round_state.bounties[active]  # your current bounty rank
         pass
 
     def handle_round_over(self, game_state, terminal_state, active):
@@ -103,12 +103,12 @@ class Player(Bot):
         Returns:
         Nothing.
         '''
-        #my_delta = terminal_state.deltas[active]  # your bankroll change from this round
-        #previous_state = terminal_state.previous_state  # RoundState before payoffs
-        #street = previous_state.street  # 0, 3, 4, or 5 representing when this round ended
-        #my_cards = previous_state.hands[active]  # your cards
-        #opp_cards = previous_state.hands[1-active]  # opponent's cards or [] if not revealed
-        #opponent_bounty = teriminal_state.bounty_hits # True if opponent hit bounty
+        my_delta = terminal_state.deltas[active]  # your bankroll change from this round
+        previous_state = terminal_state.previous_state  # RoundState before payoffs
+        street = previous_state.street  # 0, 3, 4, or 5 representing when this round ended
+        my_cards = previous_state.hands[active]  # your cards
+        opp_cards = previous_state.hands[1-active]  # opponent's cards or [] if not revealed
+        opponent_bounty = terminal_state.bounty_hits # True if opponent hit bounty
 
     def get_action(self, game_state, round_state, active):
         '''
@@ -132,8 +132,8 @@ class Player(Bot):
         #opp_stack = round_state.stacks[1-active]  # the number of chips your opponent has remaining
         #continue_cost = opp_pip - my_pip  # the number of chips needed to stay in the pot
         #my_bounty = round_state.bounties[active]  # your current bounty rank
-        #my_contribution = STARTING_STACK - my_stack  # the number of chips you have contributed to the pot
-        #opp_contribution = STARTING_STACK - opp_stack  # the number of chips your opponent has contributed to the pot
+        my_contribution = STARTING_STACK - my_stack  # the number of chips you have contributed to the pot
+        opp_contribution = STARTING_STACK - opp_stack  # the number of chips your opponent has contributed to the pot
         legal_actions = round_state.legal_actions()  # the actions you are allowed to take
         my_pip = round_state.pips[active]  # the number of chips you have contributed to the pot this round of betting
         street = round_state.street
@@ -143,6 +143,7 @@ class Player(Bot):
         opp_stack = round_state.stacks[1-active]
         my_bounty = round_state.bounties[active]
         continue_cost = opp_pip - my_pip
+
         
         # Evaluate hand strength
         if street == 0:  # Preflop
@@ -150,6 +151,7 @@ class Player(Bot):
         else:
             board_cards = round_state.deck[:street]
             hand_value = self.evaluate_hand(my_cards, board_cards, my_bounty)
+        
         
         # Calculate pot odds
         pot_odds = continue_cost / (continue_cost + opp_pip + my_pip)
@@ -170,18 +172,37 @@ class Player(Bot):
                         elif hand_value > 60:  # Decent hand
                             return CallAction()
             
-            if CheckAction in legal_actions:
+            elif CheckAction in legal_actions:
                 return CheckAction()
             
-            if CallAction in legal_actions and hand_value > 50:
+            elif CallAction in legal_actions and hand_value > 50:
                 return CallAction()
             
             return FoldAction()
+        
+        if street >= 1: #flop
+            if RaiseAction in legal_actions:
+                if hand_value > 80:
+                    return RaiseAction(min(max_raise, int(3/4*(my_cards + opp_contribution))))
+                elif hand_value > 65:
+                    return RaiseAction(min(max_raise, 1/2*(my_contribution+opp_contribution)))
+            elif CheckAction in legal_actions:
+                return CheckAction()
+            
+            elif CallAction in legal_actions:
+                if hand_value > 55:
+                    return CallAction()
+            
+            else:
+                return FoldAction()
+
+
+            
 
     def evaluate_hand(self, hole_cards, community_cards, bounty_rank):
         base_strength = eval7.evaluate(hole_cards + community_cards)
         bounty_multiplier = 1.5 if bounty_rank in [card[0] for card in hole_cards + community_cards] else 1.0
-        return base_strength * bounty_multiplier
+        return base_strength * bounty_multiplier 
 
     def evaluate_preflop_hand(self, cards, bounty_rank):
         """
@@ -204,8 +225,9 @@ class Player(Bot):
         if bounty_rank in ranks:
             win_percentage *= 1.2  # Increase win percentage by 20% with bounty card
         
-        return win_percentage
+        return win_percentage 
 
 
 if __name__ == '__main__':
     run_bot(Player(), parse_args())
+    
