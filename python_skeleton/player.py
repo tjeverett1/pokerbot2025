@@ -124,26 +124,23 @@ class Player(Bot):
         Your action.
         '''
         # Get basic info
-        #street = round_state.street  # 0, 3, 4, or 5 representing pre-flop, flop, turn, or river respectively
-        #my_cards = round_state.hands[active]  # your cards
-        #board_cards = round_state.deck[:street]  # the board cards
-        #opp_pip = round_state.pips[1-active]  # the number of chips your opponent has contributed to the pot this round of betting
-        #my_stack = round_state.stacks[active]  # the number of chips you have remaining
-        #opp_stack = round_state.stacks[1-active]  # the number of chips your opponent has remaining
-        #continue_cost = opp_pip - my_pip  # the number of chips needed to stay in the pot
-        #my_bounty = round_state.bounties[active]  # your current bounty rank
+        street = round_state.street  # 0, 3, 4, or 5 representing pre-flop, flop, turn, or river respectively
+        my_cards = round_state.hands[active]  # your cards
+        board_cards = round_state.deck[:street]  # the board cards
+        opp_pip = round_state.pips[1-active]  # the number of chips your opponent has contributed to the pot this round of betting
+        my_stack = round_state.stacks[active]  # the number of chips you have remaining
+        opp_stack = round_state.stacks[1-active]  # the number of chips your opponent has remaining
+        my_pip = round_state.pips[active]  # the number of chips you have contributed to the pot this round of betting
+
+        continue_cost = opp_pip - my_pip  # the number of chips needed to stay in the pot
+        my_bounty = round_state.bounties[active]  # your current bounty rank
         my_contribution = STARTING_STACK - my_stack  # the number of chips you have contributed to the pot
         opp_contribution = STARTING_STACK - opp_stack  # the number of chips your opponent has contributed to the pot
         legal_actions = round_state.legal_actions()  # the actions you are allowed to take
-        my_pip = round_state.pips[active]  # the number of chips you have contributed to the pot this round of betting
         street = round_state.street
         my_cards = round_state.hands[active]
-        opp_pip = round_state.pips[1-active]
-        my_stack = round_state.stacks[active]
-        opp_stack = round_state.stacks[1-active]
-        my_bounty = round_state.bounties[active]
-        continue_cost = opp_pip - my_pip
-
+   
+        
         
         # Evaluate hand strength
         if street == 0:  # Preflop
@@ -154,7 +151,10 @@ class Player(Bot):
         
         
         # Calculate pot odds
-        pot_odds = continue_cost / (continue_cost + opp_pip + my_pip)
+        if (continue_cost + opp_pip + my_pip) > 0:
+            pot_odds = continue_cost / (continue_cost + opp_pip + my_pip)
+        else:
+            pot_odds = 1
         
         # Basic preflop strategy
         if street == 0:
@@ -182,10 +182,11 @@ class Player(Bot):
         
         if street >= 1: #flop
             if RaiseAction in legal_actions:
+                min_raise, max_raise = round_state.raise_bounds()
                 if hand_value > 80:
-                    return RaiseAction(min(max_raise, int(3/4*(my_cards + opp_contribution))))
+                    return RaiseAction(min(max_raise, int(3/4*(opp_pip + my_pip))))
                 elif hand_value > 65:
-                    return RaiseAction(min(max_raise, 1/2*(my_contribution+opp_contribution)))
+                    return RaiseAction(min(max_raise, 1/2*(opp_pip + my_pip)))
             elif CheckAction in legal_actions:
                 return CheckAction()
             
@@ -200,7 +201,10 @@ class Player(Bot):
             
 
     def evaluate_hand(self, hole_cards, community_cards, bounty_rank):
-        base_strength = eval7.evaluate(hole_cards + community_cards)
+        print(f'{hole_cards=}, {community_cards=}')
+        deck = hole_cards + community_cards
+        deck = [eval7.Card(card) for card in deck]
+        base_strength = eval7.evaluate(deck)
         bounty_multiplier = 1.5 if bounty_rank in [card[0] for card in hole_cards + community_cards] else 1.0
         return base_strength * bounty_multiplier 
 
