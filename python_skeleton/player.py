@@ -9,6 +9,7 @@ from skeleton.runner import parse_args, run_bot
 
 import random
 import eval7
+import numpy as np
 
 
 class Player(Bot):
@@ -187,6 +188,7 @@ class Player(Bot):
                     return RaiseAction(min(max_raise, int(3/4*(opp_pip + my_pip))))
                 elif hand_value > 65:
                     return RaiseAction(min(max_raise, 1/2*(opp_pip + my_pip)))
+                
             elif CheckAction in legal_actions:
                 return CheckAction()
             
@@ -197,16 +199,41 @@ class Player(Bot):
             else:
                 return FoldAction()
 
-
+        return FoldAction()
             
 
     def evaluate_hand(self, hole_cards, community_cards, bounty_rank):
-        print(f'{hole_cards=}, {community_cards=}')
+        import eval7
+        
+        # Combine hole cards and community cards into a deck
         deck = hole_cards + community_cards
+        # deck = ['As', 'Ks', 'Qs', 'Js', 'Ts'] #best deck
+        # deck = ['2s', '3s', '5c', '6c', '7h'] #worst deck
         deck = [eval7.Card(card) for card in deck]
+        
+
+        
+        # Get the base strength from eval7
         base_strength = eval7.evaluate(deck)
+        # print(base_strength)
+        
+        # Normalize base strength to a 1-100 scale
+        # eval7 evaluates hands with a score between 0 and 7462 (0 is the weakest hand, 7462 is the strongest)
+        normalized_strength = int((np.log(base_strength) - np.log(344847)) / (np.log(135004160) - np.log(344847)) * 100)
+        print(normalized_strength)
+        
+        # Check if bounty rank affects multiplier
         bounty_multiplier = 1.5 if bounty_rank in [card[0] for card in hole_cards + community_cards] else 1.0
-        return base_strength * bounty_multiplier 
+        
+        # Apply bounty multiplier
+        adjusted_strength = normalized_strength * bounty_multiplier
+        
+        # Ensure the result doesn't exceed 100 renormalize
+        final_strength = min(100, adjusted_strength)
+        
+        # print(adjusted_strength)
+        return final_strength
+
 
     def evaluate_preflop_hand(self, cards, bounty_rank):
         """
