@@ -10,6 +10,7 @@ from skeleton.runner import parse_args, run_bot
 import random
 import eval7
 import numpy as np
+import sys
 
 
 class Player(Bot):
@@ -27,43 +28,71 @@ class Player(Bot):
         Returns:
         Nothing.
         '''
-        # Store hand strength as [win_percentage, range_percentile]
-        # win_percentage: % chance to win against random hand (84.90 = wins 84.90% of the time)
+        # Store hand strength as [win_percentage, absolute_rank, range_percentile]
+        # absolute_rank: 1-169 (1 = best, 169 = worst)
         # range_percentile: position in range (0.6 = top 0.6% of hands, 100 = bottom 100%)
         self.hand_strength = {
-            # Pocket Pairs
-            'AA': [84.90, 0.6], 'KK': [82.10, 1.2], 'QQ': [79.60, 1.8], 'JJ': [77.10, 2.4], 'TT': [74.70, 3.0],
-            '99': [71.70, 3.6], '88': [68.70, 4.1], '77': [65.70, 4.7], '66': [62.70, 5.3], '55': [59.60, 5.9],
-            '44': [56.30, 6.5], '33': [52.90, 7.1], '22': [49.30, 7.7],
-
-            # Suited Hands
-            'AKs': [66.20, 8.3], 'AQs': [65.40, 8.9], 'AJs': [64.40, 9.5], 'ATs': [63.40, 10.1], 'A9s': [61.40, 10.7], 'A8s': [60.30, 11.2], 'A7s': [59.10, 11.8], 'A6s': [57.80, 12.4], 'A5s': [57.70, 13.0], 'A4s': [56.70, 13.6], 'A3s': [55.90, 14.2], 'A2s': [55.00, 14.8],
-            'KQs': [62.40, 15.4], 'KJs': [61.40, 16.0], 'KTs': [60.40, 16.6], 'K9s': [58.40, 17.2], 'K8s': [56.40, 17.8], 'K7s': [55.40, 18.3], 'K6s': [54.30, 18.9], 'K5s': [53.30, 19.5], 'K4s': [52.30, 20.1], 'K3s': [51.40, 20.7], 'K2s': [50.50, 21.3],
-            'QJs': [59.10, 21.9], 'QTs': [58.10, 22.5], 'Q9s': [56.10, 23.1], 'Q8s': [54.20, 23.7], 'Q7s': [52.10, 24.3], 'Q6s': [51.30, 24.9], 'Q5s': [50.20, 25.4], 'Q4s': [49.30, 26.0], 'Q3s': [48.40, 26.6], 'Q2s': [47.50, 27.2],
-            'JTs': [56.20, 27.8], 'J9s': [54.20, 28.4], 'J8s': [52.30, 29.0], 'J7s': [50.30, 29.6], 'J6s': [48.30, 30.2], 'J5s': [47.50, 30.8], 'J4s': [46.50, 31.4], 'J3s': [45.70, 32.0], 'J2s': [44.70, 32.5],
-            'T9s': [52.40, 33.1], 'T8s': [50.40, 33.7], 'T7s': [48.40, 34.3], 'T6s': [46.50, 34.9], 'T5s': [44.50, 35.5], 'T4s': [43.70, 36.1], 'T3s': [42.80, 36.7], 'T2s': [42.00, 37.3],
-            '98s': [48.90, 37.9], '97s': [46.90, 38.5], '96s': [44.90, 39.1], '95s': [42.90, 39.6], '94s': [40.90, 40.2], '93s': [40.30, 40.8], '92s': [39.40, 41.4],
-            '87s': [45.70, 42.0], '86s': [43.70, 42.6], '85s': [41.70, 43.2], '84s': [39.70, 43.8], '83s': [37.80, 44.4], '82s': [37.20, 45.0],
-            '76s': [42.90, 45.6], '75s': [40.90, 46.2], '74s': [38.90, 46.7], '73s': [37.00, 47.3], '72s': [35.10, 47.9],
-            '65s': [40.30, 48.5], '64s': [38.30, 49.1], '63s': [36.40, 49.7], '62s': [34.40, 50.3],
-            '54s': [38.50, 50.9], '53s': [36.50, 51.5], '52s': [34.50, 52.1],
-            '43s': [35.70, 52.7], '42s': [33.70, 53.3],
-            '32s': [33.10, 53.8],
-
-            # Offsuit Hands
-            'AKo': [64.50, 54.4], 'AQo': [63.70, 55.0], 'AJo': [62.70, 55.6], 'ATo': [61.70, 56.2], 'A9o': [59.70, 56.8], 'A8o': [58.60, 57.4], 'A7o': [57.40, 58.0], 'A6o': [56.10, 58.6], 'A5o': [56.00, 59.2], 'A4o': [55.00, 59.8], 'A3o': [54.20, 60.4], 'A2o': [53.30, 60.9],
-            'KQo': [60.50, 61.5], 'KJo': [59.50, 62.1], 'KTo': [58.50, 62.7], 'K9o': [56.50, 63.3], 'K8o': [54.50, 63.9], 'K7o': [53.50, 64.5], 'K6o': [52.40, 65.1], 'K5o': [51.40, 65.7], 'K4o': [50.40, 66.3], 'K3o': [49.50, 66.9], 'K2o': [48.60, 67.5],
-            'QJo': [57.00, 68.0], 'QTo': [56.00, 68.6], 'Q9o': [54.00, 69.2], 'Q8o': [52.10, 69.8], 'Q7o': [50.10, 70.4], 'Q6o': [49.30, 71.0], 'Q5o': [48.20, 71.6], 'Q4o': [47.30, 72.2], 'Q3o': [46.40, 72.8], 'Q2o': [45.50, 73.4],
-            'JTo': [53.80, 74.0], 'J9o': [51.80, 74.6], 'J8o': [49.90, 75.1], 'J7o': [47.90, 75.7], 'J6o': [45.90, 76.3], 'J5o': [45.10, 76.9], 'J4o': [44.10, 77.5], 'J3o': [43.30, 78.1], 'J2o': [42.30, 78.7],
-            'T9o': [49.80, 79.3], 'T8o': [47.80, 79.9], 'T7o': [45.80, 80.5], 'T6o': [43.90, 81.1], 'T5o': [41.90, 81.7], 'T4o': [41.10, 82.2], 'T3o': [40.20, 82.8], 'T2o': [39.40, 83.4],
-            '98o': [46.10, 84.0], '97o': [44.10, 84.6], '96o': [42.10, 85.2], '95o': [40.10, 85.8], '94o': [38.10, 86.4], '93o': [37.50, 87.0], '92o': [36.60, 87.6],
-            '87o': [42.70, 88.2], '86o': [40.70, 88.8], '85o': [38.70, 89.3], '84o': [36.70, 89.9], '83o': [34.80, 90.5], '82o': [34.20, 91.1],
-            '76o': [39.70, 91.7], '75o': [37.70, 92.3], '74o': [35.70, 92.9], '73o': [33.80, 93.5], '72o': [31.90, 94.1],
-            '65o': [37.00, 94.7], '64o': [35.00, 95.3], '63o': [33.10, 95.9], '62o': [31.10, 96.4],
-            '54o': [35.10, 97.0], '53o': [33.10, 97.6], '52o': [31.10, 98.2],
-            '43o': [32.10, 98.8], '42o': [30.10, 99.4],
-            '32o': [29.30, 100.0]
+            # Premium hands
+            'AA': [84.90, 1, 0.59],     'KK': [82.10, 2, 1.18],     'QQ': [79.60, 3, 1.77],     'AKs': [66.20, 4, 2.37],
+            'JJ': [77.10, 5, 2.96],     'AQs': [65.40, 6, 3.55],    'KQs': [62.40, 7, 4.14],    'AJs': [64.40, 8, 4.73],
+            'KJs': [61.40, 9, 5.33],    'TT': [74.70, 10, 5.92],    'AKo': [64.50, 11, 6.51],   'ATs': [63.40, 12, 7.10],
+            'QJs': [59.10, 13, 7.69],   'KTs': [60.40, 14, 8.28],   'QTs': [58.10, 15, 8.88],   'JTs': [56.20, 16, 9.47],
+            '99': [71.70, 17, 10.06],   'AQo': [63.70, 18, 10.65],  
+            
+            # Very Strong hands
+            'A9s': [61.40, 19, 11.24],  'KQo': [60.50, 20, 11.83],
+            '88': [68.70, 21, 12.43],   'K9s': [58.40, 22, 13.02],  'T9s': [52.40, 23, 13.61],  'A8s': [60.30, 24, 14.20],
+            'Q9s': [56.10, 25, 14.79],  'J9s': [54.20, 26, 15.38],  'AJo': [62.70, 27, 15.98],  'A5s': [57.70, 28, 16.57],
+            '77': [65.70, 29, 17.16],   'A7s': [59.10, 30, 17.75],  'KJo': [59.50, 31, 18.34],  'A4s': [56.70, 32, 18.93],
+            'A3s': [55.90, 33, 19.53],  'A6s': [57.80, 34, 20.12],  'QJo': [57.00, 35, 20.71],  '66': [62.70, 36, 21.30],
+            'K8s': [56.40, 37, 21.89],  'T8s': [50.40, 38, 22.49],  'A2s': [55.00, 39, 23.08],  '98s': [48.90, 40, 23.67],
+            'J8s': [52.30, 41, 24.26],  'ATo': [61.70, 42, 24.85],  
+            
+            # Solid hands
+            'Q8s': [54.20, 43, 25.44],  'K7s': [55.40, 44, 26.04],
+            'KTo': [58.50, 45, 26.63],  '55': [59.60, 46, 27.22],   'JTo': [53.80, 47, 27.81],  '87s': [45.70, 48, 28.40],
+            'QTo': [56.00, 49, 29.59],  '44': [56.30, 50, 29.59],   '33': [52.90, 51, 30.18],   '22': [49.30, 52, 30.77],
+            'K6s': [54.30, 53, 31.36],  '97s': [46.90, 54, 31.95],  'K5s': [53.30, 55, 32.54],  '76s': [42.90, 56, 33.14],
+            'T7s': [48.40, 57, 33.73],  'K4s': [52.30, 58, 34.32],  'K3s': [51.40, 59, 34.91],  'K2s': [50.50, 60, 35.50],
+            'Q7s': [52.10, 61, 36.09],  '86s': [43.70, 62, 36.69],  '65s': [40.30, 63, 37.28],  'J7s': [50.30, 64, 37.87],
+            '54s': [38.50, 65, 38.46],  'Q6s': [51.30, 66, 39.05],  '75s': [40.90, 67, 39.64],  '96s': [44.90, 68, 40.24],
+            'Q5s': [50.20, 69, 40.83],  '64s': [38.30, 70, 41.42],  'Q4s': [49.30, 71, 42.01],  'Q3s': [48.40, 72, 42.60],
+            'T9o': [52.40, 73, 43.20],  'T6s': [46.50, 74, 43.79],  'Q2s': [47.50, 75, 44.38],  'A9o': [61.40, 76, 44.97],
+            '53s': [36.50, 77, 45.56],  '85s': [41.70, 78, 46.15],  'J8o': [52.30, 79, 46.75],  'J9o': [54.20, 80, 47.34],
+            'K9o': [58.40, 81, 47.93],  
+            
+            # Marginal hands
+            'J5s': [47.50, 82, 48.52],  'Q9o': [56.10, 83, 49.11],  '43s': [35.70, 84, 49.70],
+            '74s': [38.90, 85, 50.30],  'J4s': [46.50, 86, 50.89],  'J3s': [45.70, 87, 51.48],  '95s': [42.90, 88, 52.07],
+            'J2s': [44.70, 89, 52.66],  '63s': [36.40, 90, 53.25],  'A8o': [60.30, 91, 53.85],  '52s': [34.50, 92, 54.44],
+            'T5s': [44.50, 93, 55.03],  '84s': [39.70, 94, 55.62],  'T4s': [43.70, 95, 56.21],  'T3s': [42.80, 96, 56.80],
+            '42s': [33.70, 97, 57.40],  'T2s': [42.00, 98, 57.99],  '98o': [48.90, 99, 58.58],  'T8o': [50.40, 100, 59.17],
+            'A5o': [57.70, 101, 59.76], 'A7o': [59.10, 102, 60.36], '73s': [37.00, 103, 60.95], 'A4o': [56.70, 104, 61.54],
+            '32s': [33.10, 105, 62.13], '94s': [40.90, 106, 62.72], '93s': [40.30, 107, 63.31], 'J8o': [52.30, 108, 63.91],
+            'A3o': [55.90, 109, 64.50], '62s': [34.40, 110, 65.09], '92s': [39.40, 111, 65.68], 'K8o': [56.40, 112, 66.27],
+            'A6o': [57.80, 113, 66.86], '87o': [45.70, 114, 67.46], 'Q8o': [54.20, 115, 68.05], '83s': [37.80, 116, 68.64],
+            'A2o': [55.00, 117, 69.23], '82s': [37.20, 118, 69.82], '97o': [46.90, 119, 70.41], '72s': [35.10, 120, 71.01],
+            '76o': [42.90, 121, 71.60], 'K7o': [55.40, 122, 72.19], '65o': [40.30, 123, 72.78], 'T7o': [48.40, 124, 73.37],
+            'K6o': [54.30, 125, 73.96], '86o': [43.70, 126, 74.56], '54o': [38.50, 127, 75.15], 'K5o': [53.30, 128, 75.74],
+            'J7o': [50.30, 129, 76.33], '75o': [40.90, 130, 76.92], 'Q7o': [52.10, 131, 77.51], 'K4o': [52.30, 132, 78.11],
+            'K3o': [51.40, 133, 78.70], '96o': [44.90, 134, 79.29], 
+            
+            # Pretty bad hands
+            'K2o': [50.50, 135, 79.88], '64o': [38.30, 136, 80.47],
+            'Q6o': [51.30, 137, 81.07], '53o': [36.50, 138, 81.66], '85o': [41.70, 139, 82.25], 'T6o': [46.50, 140, 82.84],
+            'Q5o': [50.20, 141, 83.43], '43o': [35.70, 142, 84.02], 'Q4o': [49.30, 143, 84.62], 'Q3o': [48.40, 144, 85.21],
+            '74o': [38.90, 145, 85.80], 'Q2o': [47.50, 146, 86.39], 'J6o': [48.30, 147, 86.98], '63o': [36.40, 148, 87.57],
+            'J5o': [47.50, 149, 88.17], '95o': [42.90, 150, 88.76], '52o': [34.50, 151, 89.35], 'J4o': [46.50, 152, 89.94],
+            'J3o': [45.70, 153, 90.53],
+            
+            # Garbage hands (always fold unless there's bounty)
+            '42o': [33.70, 154, 91.12], 'J2o': [44.70, 155, 91.71], '84o': [39.70, 156, 92.31],
+            'T5o': [44.50, 157, 92.90], 'T4o': [43.70, 158, 93.49], '32o': [33.10, 159, 94.08], 'T3o': [42.80, 160, 94.67],
+            '73o': [37.00, 161, 95.26], 'T2o': [42.00, 162, 95.85], '62o': [34.40, 163, 96.45], '94o': [40.90, 164, 97.04],
+            '93o': [40.30, 165, 97.63], '92o': [39.40, 166, 98.22], '83o': [37.80, 167, 98.81], '82o': [37.20, 168, 99.40],
+            '72o': [35.10, 169, 100.0]
         }
+
         # Track opponent tendencies
         self.opponent_stats = {
             'preflop_raise_count': 0,
@@ -140,98 +169,182 @@ class Player(Bot):
         legal_actions = round_state.legal_actions()  # the actions you are allowed to take
         street = round_state.street
         my_cards = round_state.hands[active]
-   
-        
-        
+
+        print(f"\n=== Action Decision ===", file=sys.stderr)
+        print(f"Street: {street}", file=sys.stderr)
+        print(f"Position: {'SB' if not bool(active) else 'BB'}", file=sys.stderr)
+        print(f"Continue cost: {continue_cost}", file=sys.stderr)
+        print(f"Legal actions: {legal_actions}", file=sys.stderr)
+        print(f"My cards: {my_cards}", file=sys.stderr)
+        print(f"Board cards: {board_cards}", file=sys.stderr)
+        print(f"My bounty: {my_bounty}", file=sys.stderr)
+       
         # Evaluate hand strength
         if street == 0:  # Preflop
-            hand_value = self.evaluate_preflop_hand(my_cards, my_bounty)
-        else:
-            board_cards = round_state.deck[:street]
-            hand_value = self.evaluate_hand(my_cards, board_cards, my_bounty)
-        
-        
-        # Calculate pot odds
-        if (continue_cost + opp_pip + my_pip) > 0:
-            pot_odds = continue_cost / (continue_cost + opp_pip + my_pip)
-        else:
-            pot_odds = 1
-        
-        # Basic preflop strategy
-        if street == 0:
+            # Get absolute rank and range percentile from hand_strength
+            # Convert face cards to consistent format
+            card_ranks = []
+            for card in my_cards:
+                rank = card[0]
+                if rank == 'T': rank = '10'
+                if rank == 'J': rank = '11'
+                if rank == 'Q': rank = '12'
+                if rank == 'K': rank = '13'
+                if rank == 'A': rank = '14'
+                card_ranks.append(rank)
+            
+            # Sort ranks in descending order and convert back to original format
+            ranks = sorted(card_ranks, key=int, reverse=True)
+            ranks = ['T' if r == '10' else 'J' if r == '11' else 'Q' if r == '12' else 'K' if r == '13' else 'A' if r == '14' else r for r in ranks]
+            
+            suited = my_cards[0][1] == my_cards[1][1]
+            hand_key = ''.join(ranks) + ('s' if suited else 'o')
+            
+            hand_stats = self.hand_strength.get(hand_key, [30.0, 169, 99.0])
+            absolute_rank = hand_stats[1]
+            range_percentile = hand_stats[2]  # Use the third index for range percentile
+            
+            # Check if we have a bounty card
+            has_bounty = my_bounty in [card[0] for card in my_cards]
+            
+            # Print debug information
+            print(f"Range percentile: {range_percentile}", file=sys.stderr)
+            print(f"Absolute rank: {absolute_rank}, Has bounty: {has_bounty}", file=sys.stderr)
+            
             if RaiseAction in legal_actions:
                 min_raise, max_raise = round_state.raise_bounds()
-                # If we're small blind (button)
-                if not bool(active):  # active == 0 means small blind
-                    if hand_value > 65:  # Premium hand
-                        return RaiseAction(min(max_raise, int(2.5 * BIG_BLIND)))
-                # If we're big blind
-                else:
-                    if continue_cost > 0:  # Facing a raise
-                        if hand_value > 75:  # Very strong hand
-                            return RaiseAction(min(max_raise, int(4.4 * continue_cost)))
-                        elif hand_value > 60:  # Decent hand
-                            return CallAction()
-            
-            elif CheckAction in legal_actions:
-                return CheckAction()
-            
-            elif CallAction in legal_actions and hand_value > 50:
-                return CallAction()
-            
-            return FoldAction()
-        
-        if street >= 1: #flop
-            if RaiseAction in legal_actions:
-                min_raise, max_raise = round_state.raise_bounds()
-                if hand_value > 80:
-                    return RaiseAction(min(max_raise, int(3/4*(opp_pip + my_pip))))
-                elif hand_value > 65:
-                    return RaiseAction(min(max_raise, 1/2*(opp_pip + my_pip)))
+                pot = my_contribution + opp_contribution
                 
+                # Define raise sizes based on number of previous raises
+                raise_sizes = {
+                    0: 2.5,  # First raise: 2.5x pot
+                    1: 2.7,  # First reraise: 2.7x pot
+                    2: 2.2,  # Second reraise: 2.2x pot
+                    3: 4.0,  # Third+ reraise: 4x pot
+                }
+                
+                # Calculate number of raises this street
+                num_raises = (my_contribution + opp_contribution - 3) // 2  # -3 accounts for blinds
+                num_raises = min(num_raises, 3)  # Cap at 3+ raises
+                
+                # Calculate raise amount
+                multiplier = raise_sizes.get(num_raises, 4.0)  # Default to 4x for any further raises
+                raise_amount = int(np.ceil(pot * multiplier))
+                
+                # Ensure raise is within bounds
+                raise_amount = max(min_raise, min(max_raise, raise_amount))
+                
+                # Always raise with bounty cards or top 90% of hands
+                if has_bounty or range_percentile <= 90:
+                    print(f"Raising with bounty/strong hand to {raise_amount}", file=sys.stderr)
+                    return RaiseAction(raise_amount)
+                    
             elif CheckAction in legal_actions:
+                print(f"Checking when given the option", file=sys.stderr)
                 return CheckAction()
             
             elif CallAction in legal_actions:
-                if hand_value > 55:
+                if has_bounty or range_percentile <= 90:
+                    print(f"Calling with bounty/strong hand", file=sys.stderr)
                     return CallAction()
             
-            else:
-                return FoldAction()
+            print(f"Folding weak hand", file=sys.stderr)
+            return FoldAction()
 
-        return FoldAction()
+        else:  # Postflop streets
+            # Evaluate our hand strength
+            hole_cards = my_cards
+            board = board_cards
             
+            # Check for pair or better
+            ranks_in_hand = [card[0] for card in hole_cards]
+            ranks_on_board = [card[0] for card in board]
+            all_ranks = ranks_in_hand + ranks_on_board
+            
+            # Convert face cards to numbers for proper comparison
+            rank_values = {'2':2, '3':3, '4':4, '5':5, '6':6, '7':7, '8':8, '9':9, 'T':10, 'J':11, 'Q':12, 'K':13, 'A':14}
+            numeric_ranks = [rank_values[r] for r in all_ranks]
+            
+            # Count rank frequencies
+            rank_counts = {}
+            for rank in numeric_ranks:
+                rank_counts[rank] = rank_counts.get(rank, 0) + 1
+            
+            has_pair_or_better = any(count >= 2 for count in rank_counts.values())
+            should_bet = has_pair_or_better and random.random() < 0.5
+            
+            print(f"Hand evaluation - Ranks: {all_ranks}, Has pair or better: {has_pair_or_better}", file=sys.stderr)
+            
+            # First handle checking if available
+            if CheckAction in legal_actions:
+                if not should_bet:
+                    print(f"Checking with {ranks_in_hand} on {ranks_on_board}", file=sys.stderr)
+                    return CheckAction()
+            
+            # Then handle betting if we want to bet
+            if RaiseAction in legal_actions and should_bet:
+                min_raise, max_raise = round_state.raise_bounds()
+                pot = my_contribution + opp_contribution
+                bet_amount = min(max_raise, int(pot * 0.5))  # Bet half pot
+                print(f"Betting {bet_amount} with pair or better", file=sys.stderr)
+                return RaiseAction(bet_amount)
+            
+            # If we can't check and don't want to bet, fold
+            if FoldAction in legal_actions:
+                print(f"Folding", file=sys.stderr)
+                return FoldAction()
+            
+            # If we can't fold, call
+            if CallAction in legal_actions:
+                print(f"Calling - can't fold", file=sys.stderr)
+                return CallAction()
+            
+            # If we get here somehow, check if possible
+            if CheckAction in legal_actions:
+                print(f"Checking by default", file=sys.stderr)
+                return CheckAction()
+            
+            print(f"Defaulting to fold", file=sys.stderr)
+            print("=====================\n", file=sys.stderr)
+            return FoldAction()
 
     def evaluate_hand(self, hole_cards, community_cards, bounty_rank):
         import eval7
+        import sys
         
         # Combine hole cards and community cards into a deck
         deck = hole_cards + community_cards
-        # deck = ['As', 'Ks', 'Qs', 'Js', 'Ts'] #best deck
-        # deck = ['2s', '3s', '5c', '6c', '7h'] #worst deck
-        deck = [eval7.Card(card) for card in deck]
+        deck_cards = [eval7.Card(card) for card in deck]
         
-
+        # Log initial hand information
+        print(f"\n=== Hand Evaluation ===", file=sys.stderr)
+        print(f"Hole cards: {hole_cards}", file=sys.stderr)
+        print(f"Community cards: {community_cards}", file=sys.stderr)
+        print(f"Bounty rank: {bounty_rank}", file=sys.stderr)
         
         # Get the base strength from eval7
-        base_strength = eval7.evaluate(deck)
-        # print(base_strength)
+        base_strength = eval7.evaluate(deck_cards)
+        print(f"Raw eval7 strength: {base_strength}", file=sys.stderr)
         
         # Normalize base strength to a 1-100 scale
-        # eval7 evaluates hands with a score between 0 and 7462 (0 is the weakest hand, 7462 is the strongest)
         normalized_strength = int((np.log(base_strength) - np.log(344847)) / (np.log(135004160) - np.log(344847)) * 100)
-        print(normalized_strength)
+        print(f"Normalized strength (0-100): {normalized_strength}", file=sys.stderr)
         
         # Check if bounty rank affects multiplier
-        bounty_multiplier = 1.5 if bounty_rank in [card[0] for card in hole_cards + community_cards] else 1.0
+        bounty_cards = [card[0] for card in hole_cards + community_cards]
+        bounty_multiplier = 1.5 if bounty_rank in bounty_cards else 1.0
+        print(f"Card ranks: {bounty_cards}", file=sys.stderr)
+        print(f"Bounty multiplier: {bounty_multiplier}", file=sys.stderr)
         
         # Apply bounty multiplier
         adjusted_strength = normalized_strength * bounty_multiplier
+        print(f"Adjusted strength: {adjusted_strength}", file=sys.stderr)
         
-        # Ensure the result doesn't exceed 100 renormalize
+        # Final normalization
         final_strength = min(100, adjusted_strength)
+        print(f"Final strength: {final_strength}", file=sys.stderr)
+        print("=====================\n", file=sys.stderr)
         
-        # print(adjusted_strength)
         return final_strength
 
 
@@ -240,6 +353,8 @@ class Player(Bot):
         Evaluates preflop hand strength considering bounty
         Returns win percentage adjusted for bounty cards
         """
+        import sys
+        
         # Sort cards by rank for easier comparison
         ranks = sorted([card[0] for card in cards], reverse=True)
         suited = cards[0][1] == cards[1][1]  # Check if cards share the same suit
@@ -247,16 +362,29 @@ class Player(Bot):
         # Construct hand key (e.g., 'AKs' or 'AKo')
         hand_key = ''.join(ranks) + ('s' if suited else 'o')
         
+        print(f"\n=== Preflop Hand Evaluation ===", file=sys.stderr)
+        print(f"Hand: {cards}", file=sys.stderr)
+        print(f"Constructed key: {hand_key}", file=sys.stderr)
+        print(f"Bounty rank: {bounty_rank}", file=sys.stderr)
+        
         # Get base strength [win_percentage, range_percentile]
         # Default to [30.0, 99.0] for unmapped hands (slightly better than worst hand)
         base_stats = self.hand_strength.get(hand_key, [30.0, 99.0])
         win_percentage = base_stats[0]
+        range_percentile = base_stats[1]
+        
+        print(f"Base win percentage: {win_percentage}%", file=sys.stderr)
+        print(f"Range percentile: {range_percentile} (lower is better)", file=sys.stderr)
         
         # Bounty multiplier if we have bounty card
         if bounty_rank in ranks:
             win_percentage *= 1.2  # Increase win percentage by 20% with bounty card
+            print(f"Bounty card found! Adjusted win percentage: {win_percentage}%", file=sys.stderr)
         
-        return win_percentage 
+        print("=====================\n", file=sys.stderr)
+        
+        # Return both win percentage and range percentile for better preflop decision making
+        return win_percentage, range_percentile
 
 
 if __name__ == '__main__':

@@ -41,10 +41,12 @@ BOUNTY HOLD'EM - STRATEGIC GUIDELINES
 
 GENERAL STRATEGY
 ----------------
-1. Use same preflop sizing regardless of bounty in hand
+- Since you get punished if you fold and opponent has bounty, we want to be raising more and calling more preflop
+- Consider sizing changes based on if we have premium hand/bounty (larger bet) vs marginal raise (smaller bet)
 
 PRE-FLOP STRATEGY
 ----------------
+Ranking of all hands: https://www.preflophands.com
 1. Hand Strength Categories
 
 2. Position-Based Adjustments
