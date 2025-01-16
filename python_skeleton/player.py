@@ -93,6 +93,16 @@ class Player(Bot):
             '72o': [35.10, 169, 100.0]
         }
 
+        # Define raise sizes based on number of previous raises
+        self.preflop_raise_sizes = {
+            0: 2.0,  
+            1: 2.2,
+            2: 2.3, 
+            3: 2.4, 
+            4: 2.7,
+            5: float('inf') 
+        }
+
         # Track opponent tendencies
         self.opponent_stats = {
             'preflop_raise_count': 0,
@@ -101,25 +111,18 @@ class Player(Bot):
             'three_bet_opportunities': 0
         }
 
+        # Add raise tracking
+        self.current_round_raises = 0
+        self.current_round_num = 0
+
     def handle_new_round(self, game_state, round_state, active):
         '''
-        Called when a new round starts. Called NUM_ROUNDS times.
-
-        Arguments:
-        game_state: the GameState object.
-        round_state: the RoundState object.
-        active: your player's index.
-
-        Returns:
-        Nothing.
+        Called when a new round starts.
         '''
-        my_bankroll = game_state.bankroll  # the total number of chips you've gained or lost from the beginning of the game to the start of this round
-        game_clock = game_state.game_clock  # the total number of seconds your bot has left to play this game
-        round_num = game_state.round_num  # the round number from 1 to NUM_ROUNDS
-        my_cards = round_state.hands[active]  # your cards
-        big_blind = bool(active)  # True if you are the big blind
-        my_bounty = round_state.bounties[active]  # your current bounty rank
-        pass
+        # Reset raise counter at start of each round
+        if self.current_round_num != game_state.round_num:
+            self.current_round_raises = 0
+            self.current_round_num = game_state.round_num
 
     def handle_round_over(self, game_state, terminal_state, active):
         '''
@@ -144,247 +147,329 @@ class Player(Bot):
         '''
         Where the magic happens - your code should implement this function.
         Called any time the engine needs an action from your bot.
-
-        Arguments:
-        game_state: the GameState object.
-        round_state: the RoundState object.
-        active: your player's index.
-
-        Returns:
-        Your action.
         '''
-        # Get basic info
-        street = round_state.street  # 0, 3, 4, or 5 representing pre-flop, flop, turn, or river respectively
-        my_cards = round_state.hands[active]  # your cards
-        board_cards = round_state.deck[:street]  # the board cards
-        opp_pip = round_state.pips[1-active]  # the number of chips your opponent has contributed to the pot this round of betting
-        my_stack = round_state.stacks[active]  # the number of chips you have remaining
-        opp_stack = round_state.stacks[1-active]  # the number of chips your opponent has remaining
-        my_pip = round_state.pips[active]  # the number of chips you have contributed to the pot this round of betting
-
-        continue_cost = opp_pip - my_pip  # the number of chips needed to stay in the pot
-        my_bounty = round_state.bounties[active]  # your current bounty rank
-        my_contribution = STARTING_STACK - my_stack  # the number of chips you have contributed to the pot
-        opp_contribution = STARTING_STACK - opp_stack  # the number of chips your opponent has contributed to the pot
-        legal_actions = round_state.legal_actions()  # the actions you are allowed to take
         street = round_state.street
-        my_cards = round_state.hands[active]
-
         print(f"\n=== Action Decision ===", file=sys.stderr)
+        print(f"Round: {game_state.round_num}/{NUM_ROUNDS}", file=sys.stderr)  # Added round number
         print(f"Street: {street}", file=sys.stderr)
         print(f"Position: {'SB' if not bool(active) else 'BB'}", file=sys.stderr)
-        print(f"Continue cost: {continue_cost}", file=sys.stderr)
-        print(f"Legal actions: {legal_actions}", file=sys.stderr)
-        print(f"My cards: {my_cards}", file=sys.stderr)
-        print(f"Board cards: {board_cards}", file=sys.stderr)
-        print(f"My bounty: {my_bounty}", file=sys.stderr)
+        print(f"Legal actions: {round_state.legal_actions()}", file=sys.stderr)
+        print(f"My cards: {round_state.hands[active]}", file=sys.stderr)
+        print(f"Board cards: {round_state.deck[:street]}", file=sys.stderr)
+        print(f"My bounty: {round_state.bounties[active]}", file=sys.stderr)
        
-        # Evaluate hand strength
-        if street == 0:  # Preflop
-            # Get absolute rank and range percentile from hand_strength
+        if street == 0:  
+            return self.get_preflop_action(game_state, round_state, active)
+        else:  
+            return self.get_postflop_action(game_state, round_state, active)
+
+    def get_preflop_action(self, game_state, round_state, active):
+        """
+        Helper function to determine preflop action based on position and pot odds
+        Returns: Action object (RaiseAction, CallAction, CheckAction, or FoldAction)
+        """
+        def get_hand_stats():
+            """
+            Helper function to evaluate hand strength
+            Returns: (range_percentile, has_bounty)
+            """
+            cards = round_state.hands[active]
+            bounty_rank = round_state.bounties[active]
+
             # Convert face cards to consistent format
             card_ranks = []
-            for card in my_cards:
+            for card in cards:
                 rank = card[0]
-                if rank == 'T': rank = '10'
-                if rank == 'J': rank = '11'
-                if rank == 'Q': rank = '12'
-                if rank == 'K': rank = '13'
-                if rank == 'A': rank = '14'
                 card_ranks.append(rank)
             
-            # Sort ranks in descending order and convert back to original format
-            ranks = sorted(card_ranks, key=int, reverse=True)
-            ranks = ['T' if r == '10' else 'J' if r == '11' else 'Q' if r == '12' else 'K' if r == '13' else 'A' if r == '14' else r for r in ranks]
+            # Check if suited
+            suited = cards[0][1] == cards[1][1]
             
-            suited = my_cards[0][1] == my_cards[1][1]
-            hand_key = ''.join(ranks) + ('s' if suited else 'o')
+            # Handle pocket pairs first
+            if card_ranks[0] == card_ranks[1]:
+                hand_key = card_ranks[0] + card_ranks[1]
+            # Handle Ace hands - Ace must always be first
+            elif 'A' in card_ranks:
+                other_card = [r for r in card_ranks if r != 'A'][0]
+                hand_key = 'A' + other_card + ('s' if suited else 'o')
+            # Handle King hands - King must be first if no Ace
+            elif 'K' in card_ranks:
+                other_card = [r for r in card_ranks if r != 'K'][0]
+                hand_key = 'K' + other_card + ('s' if suited else 'o')
+            # Handle Queen hands - Queen must be first if no Ace or King
+            elif 'Q' in card_ranks:
+                other_card = [r for r in card_ranks if r != 'Q'][0]
+                hand_key = 'Q' + other_card + ('s' if suited else 'o')
+            # Handle Jack hands - Jack must be first if no Ace, King, or Queen
+            elif 'J' in card_ranks:
+                other_card = [r for r in card_ranks if r != 'J'][0]
+                hand_key = 'J' + other_card + ('s' if suited else 'o')
+            # Handle Ten hands - Ten must be first if no face cards
+            elif 'T' in card_ranks:
+                other_card = [r for r in card_ranks if r != 'T'][0]
+                hand_key = 'T' + other_card + ('s' if suited else 'o')
+            else:
+                # For remaining hands, sort numerically
+                ranks = sorted(card_ranks, reverse=True)
+                hand_key = ranks[0] + ranks[1] + ('s' if suited else 'o')
             
+            print(f"Hand key: {hand_key}", file=sys.stderr)  # Debug print
+            
+            # Get hand stats from dictionary
             hand_stats = self.hand_strength.get(hand_key, [30.0, 169, 99.0])
-            absolute_rank = hand_stats[1]
-            range_percentile = hand_stats[2]  # Use the third index for range percentile
+            range_percentile = hand_stats[2]
             
-            # Check if we have a bounty card
-            has_bounty = my_bounty in [card[0] for card in my_cards]
+            has_bounty = bounty_rank in [card[0] for card in cards]
             
-            # Print debug information
             print(f"Range percentile: {range_percentile}", file=sys.stderr)
-            print(f"Absolute rank: {absolute_rank}, Has bounty: {has_bounty}", file=sys.stderr)
+            print(f"Has bounty: {has_bounty}", file=sys.stderr)
+            return range_percentile, has_bounty
+
+        def calculate_pot_odds(my_contrib, opp_contrib, call_amount):
+            """
+            Calculate pot odds and total pot size
+            Returns: (pot_odds, total_pot)
+            """
+            if call_amount == 0:
+                return float('inf'), my_contrib + opp_contrib
+                
+            current_pot = my_contrib + opp_contrib  # What's already in the pot
+            total_pot = current_pot + call_amount  # Total after we call
             
+            # Pot odds = what we can win / what we need to risk
+            # When facing a raise, we can win the current pot plus their raise
+            pot_odds = total_pot / call_amount
+            
+            print(f"Pot Odds Calculation:", file=sys.stderr)
+            print(f"My contribution: {my_contrib}", file=sys.stderr)
+            print(f"Opponent contribution: {opp_contrib}", file=sys.stderr)
+            print(f"Call amount: {call_amount}", file=sys.stderr)
+            print(f"Current pot: {current_pot}", file=sys.stderr)
+            print(f"Total pot after call: {total_pot}", file=sys.stderr)
+            print(f"Pot odds: {pot_odds:.2f}:1", file=sys.stderr)
+            
+            return pot_odds, total_pot
+
+        def adjust_range_percentile(base_percentile):
+            """
+            Dynamically adjust range percentile based on pot odds
+            Returns: adjusted_percentile
+            """
+            # Skip adjustments if no raises yet
+            if self.current_round_raises == 0:
+                print(f"  No raises yet - using base percentile: {base_percentile:.1f}", file=sys.stderr)
+                return base_percentile
+            
+            # Calculate required equity from pot odds
+            my_stack = round_state.stacks[active]
+            opp_stack = round_state.stacks[1-active]
+            my_contribution = STARTING_STACK - my_stack
+            opp_contribution = STARTING_STACK - opp_stack
+            call_amount = max(0, opp_contribution - my_contribution)
+            
+            if call_amount == 0:
+                return base_percentile
+                
+            total_pot = my_contribution + opp_contribution + call_amount
+            pot_odds = total_pot / call_amount
+            
+            # Required equity = 1 / (1 + pot_odds)
+            # Example: 4:1 pot odds means we need 20% equity
+            required_equity = 1 / (1 + pot_odds)
+            
+            # Convert to percentile (multiply by 100 since equity is 0-1)
+            # We continue with hands BETTER than required equity
+            max_continue_percentile = (1 - required_equity) * 100
+            
+            print(f"Range adjustment:", file=sys.stderr)
+            print(f"  Base percentile: {base_percentile:.1f}", file=sys.stderr)
+            print(f"  Pot odds: {pot_odds:.2f}:1", file=sys.stderr)
+            print(f"  Required equity: {required_equity:.1%}", file=sys.stderr)
+            print(f"  Max continue: {max_continue_percentile:.1f}%", file=sys.stderr)
+            
+            # If our hand is worse than the continuing range, adjust it to 100%
+            if base_percentile > max_continue_percentile:
+                print(f"  Final percentile: 100.0 (hand not in continuing range)", file=sys.stderr)
+                return 100.0
+                
+            # Otherwise, rescale our hand to the new range
+            adjusted_percentile = (base_percentile / max_continue_percentile) * 100
+            print(f"  Final percentile: {adjusted_percentile:.1f}", file=sys.stderr)
+            
+            return adjusted_percentile
+
+        # Get base hand evaluation and position info
+        base_percentile, has_bounty = get_hand_stats()
+        is_sb = not bool(active)
+        legal_actions = round_state.legal_actions()
+        my_stack = round_state.stacks[active]
+        opp_stack = round_state.stacks[1-active]
+        my_contribution = STARTING_STACK - my_stack
+        opp_contribution = STARTING_STACK - opp_stack
+
+        # SB specific logic - only raise or fold, never call
+        if is_sb and my_contribution <= 1 and opp_contribution <= 2:
             if RaiseAction in legal_actions:
-                min_raise, max_raise = round_state.raise_bounds()
-                pot = my_contribution + opp_contribution
-                
-                # Define raise sizes based on number of previous raises
-                raise_sizes = {
-                    0: 2.5,  # First raise: 2.5x pot
-                    1: 2.7,  # First reraise: 2.7x pot
-                    2: 2.2,  # Second reraise: 2.2x pot
-                    3: 4.0,  # Third+ reraise: 4x pot
-                }
-                
-                # Calculate number of raises this street
-                num_raises = (my_contribution + opp_contribution - 3) // 2  # -3 accounts for blinds
-                num_raises = min(num_raises, 3)  # Cap at 3+ raises
+                if base_percentile <= 83 or has_bounty:  # Open top 83% or bounty hands
+                    min_raise, max_raise = round_state.raise_bounds()
+                    pot = my_contribution + opp_contribution
+                    raise_multiplier = random.uniform(2.0, 2.50)
+                    raise_amount = int(pot * raise_multiplier)
+                    raise_amount = max(min_raise, min(max_raise, raise_amount))
+                    self.current_round_raises += 1  # Increment raise counter
+                    print(f"Opening from SB with {'bounty hand' if has_bounty else 'top 83%'} - Raising {raise_amount} ({raise_multiplier:.1f}x pot)", file=sys.stderr)
+                    return RaiseAction(raise_amount)
+            print(f"Folding from SB - hand too weak", file=sys.stderr)
+            return FoldAction()
+
+        # Adjust percentile based on number of raises
+        range_percentile = adjust_range_percentile(base_percentile)
+
+        # Calculate pot odds for non-SB decisions
+        call_amount = 0
+        if CallAction in legal_actions:
+            call_amount = max(0, opp_contribution - my_contribution)
+        pot_odds, total_pot = calculate_pot_odds(my_contribution, opp_contribution, call_amount)
+
+        if CallAction in legal_actions:
+            # Call with good pot odds or strong hands
+            if has_bounty:
+                print(f"Calling with bounty card", file=sys.stderr)
+                return CallAction()
+            elif pot_odds >= 3 and range_percentile <= 60:
+                print(f"Calling with good pot odds", file=sys.stderr)
+                return CallAction()
+            elif pot_odds >= 2 and range_percentile <= 40:
+                print(f"Calling with decent pot odds and strong hand", file=sys.stderr)
+                return CallAction()
+
+        # Rest of decision making (for BB or facing raises)
+        if RaiseAction in legal_actions:
+            min_raise, max_raise = round_state.raise_bounds()
+            pot = my_contribution + opp_contribution
+            
+            # Randomize between raising top 10-20% of hands when facing action
+            raise_threshold = random.uniform(10.0, 20.0)
+            if range_percentile <= raise_threshold:  
+                # Get raise size multiplier based on number of raises
+                raise_multiplier = self.preflop_raise_sizes.get(self.current_round_raises, float('inf'))
                 
                 # Calculate raise amount
-                multiplier = raise_sizes.get(num_raises, 4.0)  # Default to 4x for any further raises
-                raise_amount = int(np.ceil(pot * multiplier))
-                
-                # Ensure raise is within bounds
+                raise_amount = int(pot * raise_multiplier)
                 raise_amount = max(min_raise, min(max_raise, raise_amount))
+                self.current_round_raises += 1
                 
-                # Always raise with bounty cards or top 90% of hands
-                if has_bounty or range_percentile <= 90:
-                    print(f"Raising with bounty/strong hand to {raise_amount}", file=sys.stderr)
-                    return RaiseAction(raise_amount)
-                    
-            elif CheckAction in legal_actions:
-                print(f"Checking when given the option", file=sys.stderr)
-                return CheckAction()
-            
-            elif CallAction in legal_actions:
-                if has_bounty or range_percentile <= 90:
-                    print(f"Calling with bounty/strong hand", file=sys.stderr)
-                    return CallAction()
-            
-            print(f"Folding weak hand", file=sys.stderr)
-            return FoldAction()
+                print(f"Raising with strong hand (top {raise_threshold:.1f}%) - Raising {raise_amount} ({raise_multiplier:.1f}x pot)", file=sys.stderr)
+                return RaiseAction(raise_amount)
 
-        else:  # Postflop streets
-            # Evaluate our hand strength
-            hole_cards = my_cards
-            board = board_cards
+        if CallAction in legal_actions:
+            # Call with good pot odds or strong hands
+            if has_bounty:
+                print(f"Calling with bounty card", file=sys.stderr)
+                return CallAction()
+            elif pot_odds >= 3 and range_percentile <= 60:
+                print(f"Calling with good pot odds", file=sys.stderr)
+                return CallAction()
+            elif pot_odds >= 2 and range_percentile <= 40:
+                print(f"Calling with decent pot odds and strong hand", file=sys.stderr)
+                return CallAction()
+
+        if CheckAction in legal_actions:
+            print(f"Checking when given the option", file=sys.stderr)
+            return CheckAction()
+        
+        print(f"Folding - insufficient pot odds or weak hand", file=sys.stderr)
+        return FoldAction()
+
+    def get_postflop_action(self, game_state, round_state, active):
+        """
+        Helper function to determine postflop action based on hand strength
+        Returns: Action object (RaiseAction, CallAction, CheckAction, or FoldAction)
+        """
+        def evaluate_hand_strength():
+            """
+            Helper function to evaluate postflop hand strength using eval7
+            Returns: (hand_value, hand_type)
+            """
+            hole_cards = [eval7.Card(card) for card in round_state.hands[active]]
+            board_cards = [eval7.Card(card) for card in round_state.deck[:round_state.street]]
             
-            # Check for pair or better
-            ranks_in_hand = [card[0] for card in hole_cards]
-            ranks_on_board = [card[0] for card in board]
-            all_ranks = ranks_in_hand + ranks_on_board
+            # Evaluate the hand
+            all_cards = hole_cards + board_cards
+            hand_value = eval7.evaluate(all_cards)
             
-            # Convert face cards to numbers for proper comparison
-            rank_values = {'2':2, '3':3, '4':4, '5':5, '6':6, '7':7, '8':8, '9':9, 'T':10, 'J':11, 'Q':12, 'K':13, 'A':14}
-            numeric_ranks = [rank_values[r] for r in all_ranks]
+            # Convert hand value to hand type
+            hand_types = {
+                0: 'High Card',
+                1: 'Pair',
+                2: 'Two Pair',
+                3: 'Three of a Kind',
+                4: 'Straight',
+                5: 'Flush',
+                6: 'Full House',
+                7: 'Four of a Kind',
+                8: 'Straight Flush'
+            }
             
-            # Count rank frequencies
-            rank_counts = {}
-            for rank in numeric_ranks:
-                rank_counts[rank] = rank_counts.get(rank, 0) + 1
-            
-            has_pair_or_better = any(count >= 2 for count in rank_counts.values())
-            should_bet = has_pair_or_better and random.random() < 0.5
-            
-            print(f"Hand evaluation - Ranks: {all_ranks}, Has pair or better: {has_pair_or_better}", file=sys.stderr)
-            
-            # First handle checking if available
-            if CheckAction in legal_actions:
-                if not should_bet:
-                    print(f"Checking with {ranks_in_hand} on {ranks_on_board}", file=sys.stderr)
-                    return CheckAction()
-            
-            # Then handle betting if we want to bet
-            if RaiseAction in legal_actions and should_bet:
+            hand_type = hand_types[hand_value >> 24]
+            print(f"Hand evaluation - Type: {hand_type}, Value: {hand_value}", file=sys.stderr)
+            return hand_value, hand_type
+
+        # Get hand evaluation
+        hand_value, hand_type = evaluate_hand_strength()
+
+        # Rest of postflop logic
+        legal_actions = round_state.legal_actions()
+        my_stack = round_state.stacks[active]
+        opp_stack = round_state.stacks[1-active]
+        my_contribution = STARTING_STACK - my_stack
+        opp_contribution = STARTING_STACK - opp_stack
+        pot = my_contribution + opp_contribution
+        
+        # Define betting strategy based on hand strength
+        if hand_type in ['Straight Flush', 'Four of a Kind', 'Full House', 'Flush', 'Straight']:
+            # Very strong hands - bet big or raise
+            if RaiseAction in legal_actions:
                 min_raise, max_raise = round_state.raise_bounds()
-                pot = my_contribution + opp_contribution
-                bet_amount = min(max_raise, int(pot * 0.5))  # Bet half pot
-                print(f"Betting {bet_amount} with pair or better", file=sys.stderr)
+                bet_amount = min(max_raise, pot)  # Pot-sized bet
+                print(f"Value betting {bet_amount} with {hand_type}", file=sys.stderr)
                 return RaiseAction(bet_amount)
             
-            # If we can't check and don't want to bet, fold
-            if FoldAction in legal_actions:
-                print(f"Folding", file=sys.stderr)
-                return FoldAction()
+        elif hand_type in ['Three of a Kind', 'Two Pair']:
+            # Strong hands - bet medium or call
+            if RaiseAction in legal_actions and random.random() < 0.8:  # 80% bet frequency
+                min_raise, max_raise = round_state.raise_bounds()
+                bet_amount = min(max_raise, int(pot * 0.75))  # 3/4 pot bet
+                print(f"Value betting {bet_amount} with {hand_type}", file=sys.stderr)
+                return RaiseAction(bet_amount)
+                
+        elif hand_type == 'Pair':
+            # Medium strength - bet small or call
+            if RaiseAction in legal_actions and random.random() < 0.5:  # 50% bet frequency
+                min_raise, max_raise = round_state.raise_bounds()
+                bet_amount = min(max_raise, int(pot * 0.5))  # Half pot bet
+                print(f"Value betting {bet_amount} with {hand_type}", file=sys.stderr)
+                return RaiseAction(bet_amount)
+        
+        # Default actions based on hand strength
+        if CheckAction in legal_actions:
+            print(f"Checking with {hand_type}", file=sys.stderr)
+            return CheckAction()
             
-            # If we can't fold, call
-            if CallAction in legal_actions:
-                print(f"Calling - can't fold", file=sys.stderr)
+        if CallAction in legal_actions:
+            if hand_type != 'High Card':  # Call with any pair or better
+                print(f"Calling with {hand_type}", file=sys.stderr)
                 return CallAction()
-            
-            # If we get here somehow, check if possible
-            if CheckAction in legal_actions:
-                print(f"Checking by default", file=sys.stderr)
-                return CheckAction()
-            
-            print(f"Defaulting to fold", file=sys.stderr)
-            print("=====================\n", file=sys.stderr)
+        
+        if FoldAction in legal_actions:
+            print(f"Folding {hand_type}", file=sys.stderr)
             return FoldAction()
-
-    def evaluate_hand(self, hole_cards, community_cards, bounty_rank):
-        import eval7
-        import sys
         
-        # Combine hole cards and community cards into a deck
-        deck = hole_cards + community_cards
-        deck_cards = [eval7.Card(card) for card in deck]
+        # Fallback actions
+        if CheckAction in legal_actions:
+            return CheckAction()
         
-        # Log initial hand information
-        print(f"\n=== Hand Evaluation ===", file=sys.stderr)
-        print(f"Hole cards: {hole_cards}", file=sys.stderr)
-        print(f"Community cards: {community_cards}", file=sys.stderr)
-        print(f"Bounty rank: {bounty_rank}", file=sys.stderr)
-        
-        # Get the base strength from eval7
-        base_strength = eval7.evaluate(deck_cards)
-        print(f"Raw eval7 strength: {base_strength}", file=sys.stderr)
-        
-        # Normalize base strength to a 1-100 scale
-        normalized_strength = int((np.log(base_strength) - np.log(344847)) / (np.log(135004160) - np.log(344847)) * 100)
-        print(f"Normalized strength (0-100): {normalized_strength}", file=sys.stderr)
-        
-        # Check if bounty rank affects multiplier
-        bounty_cards = [card[0] for card in hole_cards + community_cards]
-        bounty_multiplier = 1.5 if bounty_rank in bounty_cards else 1.0
-        print(f"Card ranks: {bounty_cards}", file=sys.stderr)
-        print(f"Bounty multiplier: {bounty_multiplier}", file=sys.stderr)
-        
-        # Apply bounty multiplier
-        adjusted_strength = normalized_strength * bounty_multiplier
-        print(f"Adjusted strength: {adjusted_strength}", file=sys.stderr)
-        
-        # Final normalization
-        final_strength = min(100, adjusted_strength)
-        print(f"Final strength: {final_strength}", file=sys.stderr)
-        print("=====================\n", file=sys.stderr)
-        
-        return final_strength
-
-
-    def evaluate_preflop_hand(self, cards, bounty_rank):
-        """
-        Evaluates preflop hand strength considering bounty
-        Returns win percentage adjusted for bounty cards
-        """
-        import sys
-        
-        # Sort cards by rank for easier comparison
-        ranks = sorted([card[0] for card in cards], reverse=True)
-        suited = cards[0][1] == cards[1][1]  # Check if cards share the same suit
-        
-        # Construct hand key (e.g., 'AKs' or 'AKo')
-        hand_key = ''.join(ranks) + ('s' if suited else 'o')
-        
-        print(f"\n=== Preflop Hand Evaluation ===", file=sys.stderr)
-        print(f"Hand: {cards}", file=sys.stderr)
-        print(f"Constructed key: {hand_key}", file=sys.stderr)
-        print(f"Bounty rank: {bounty_rank}", file=sys.stderr)
-        
-        # Get base strength [win_percentage, range_percentile]
-        # Default to [30.0, 99.0] for unmapped hands (slightly better than worst hand)
-        base_stats = self.hand_strength.get(hand_key, [30.0, 99.0])
-        win_percentage = base_stats[0]
-        range_percentile = base_stats[1]
-        
-        print(f"Base win percentage: {win_percentage}%", file=sys.stderr)
-        print(f"Range percentile: {range_percentile} (lower is better)", file=sys.stderr)
-        
-        # Bounty multiplier if we have bounty card
-        if bounty_rank in ranks:
-            win_percentage *= 1.2  # Increase win percentage by 20% with bounty card
-            print(f"Bounty card found! Adjusted win percentage: {win_percentage}%", file=sys.stderr)
-        
-        print("=====================\n", file=sys.stderr)
-        
-        # Return both win percentage and range percentile for better preflop decision making
-        return win_percentage, range_percentile
+        return FoldAction()
 
 
 if __name__ == '__main__':
