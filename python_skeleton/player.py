@@ -28,69 +28,77 @@ class Player(Bot):
         Returns:
         Nothing.
         '''
+        super().__init__()
+        
+        # Add rank conversion dictionary
+        self.rank_to_numeric = {
+            'A': 14, 'K': 13, 'Q': 12, 'J': 11, 'T': 10,
+            '9': 9, '8': 8, '7': 7, '6': 6, '5': 5,
+            '4': 4, '3': 3, '2': 2
+        }
+        
         # Store hand strength as [win_percentage, absolute_rank, range_percentile]
         # absolute_rank: 1-169 (1 = best, 169 = worst)
         # range_percentile: position in range (0.6 = top 0.6% of hands, 100 = bottom 100%)
+        # Calculation of range percentile: combos of hand / 1326
+        # combos of hand: {pocket pairs: 6, suited cards: 4, offsuit cards: 12}
         self.hand_strength = {
             # Premium hands
-            'AA': [84.90, 1, 0.59],     'KK': [82.10, 2, 1.18],     'QQ': [79.60, 3, 1.77],     'AKs': [66.20, 4, 2.37],
-            'JJ': [77.10, 5, 2.96],     'AQs': [65.40, 6, 3.55],    'KQs': [62.40, 7, 4.14],    'AJs': [64.40, 8, 4.73],
-            'KJs': [61.40, 9, 5.33],    'TT': [74.70, 10, 5.92],    'AKo': [64.50, 11, 6.51],   'ATs': [63.40, 12, 7.10],
-            'QJs': [59.10, 13, 7.69],   'KTs': [60.40, 14, 8.28],   'QTs': [58.10, 15, 8.88],   'JTs': [56.20, 16, 9.47],
-            '99': [71.70, 17, 10.06],   'AQo': [63.70, 18, 10.65],  
-            
+            'AA': [84.90, 1, 0.45],      'KK': [82.10, 2, 0.90],      'QQ': [79.60, 3, 1.36],      'AKs': [66.20, 4, 1.66],
+            'JJ': [77.10, 5, 2.11],      'AQs': [65.40, 6, 2.41],     'KQs': [62.40, 7, 2.71],     'AJs': [64.40, 8, 3.02],
+            'KJs': [61.40, 9, 3.32],     'TT': [74.70, 10, 3.77],     'AKo': [64.50, 11, 4.67],    'ATs': [63.40, 12, 4.98],
+            'QJs': [59.10, 13, 5.28],    'KTs': [60.40, 14, 5.58],    'QTs': [58.10, 15, 5.88],    'JTs': [56.20, 16, 6.18],
+            '99': [71.70, 17, 6.64],     'AQo': [63.70, 18, 7.54],    'A9s': [61.40, 19, 7.84],    'KQo': [60.50, 20, 8.75],
+            '88': [68.70, 21, 9.20], 
+              
             # Very Strong hands
-            'A9s': [61.40, 19, 11.24],  'KQo': [60.50, 20, 11.83],
-            '88': [68.70, 21, 12.43],   'K9s': [58.40, 22, 13.02],  'T9s': [52.40, 23, 13.61],  'A8s': [60.30, 24, 14.20],
-            'Q9s': [56.10, 25, 14.79],  'J9s': [54.20, 26, 15.38],  'AJo': [62.70, 27, 15.98],  'A5s': [57.70, 28, 16.57],
-            '77': [65.70, 29, 17.16],   'A7s': [59.10, 30, 17.75],  'KJo': [59.50, 31, 18.34],  'A4s': [56.70, 32, 18.93],
-            'A3s': [55.90, 33, 19.53],  'A6s': [57.80, 34, 20.12],  'QJo': [57.00, 35, 20.71],  '66': [62.70, 36, 21.30],
-            'K8s': [56.40, 37, 21.89],  'T8s': [50.40, 38, 22.49],  'A2s': [55.00, 39, 23.08],  '98s': [48.90, 40, 23.67],
-            'J8s': [52.30, 41, 24.26],  'ATo': [61.70, 42, 24.85],  
+            'K9s': [58.40, 22, 9.50],    'T9s': [52.40, 23, 9.80],    'A8s': [60.30, 24, 10.11],
+            'Q9s': [56.10, 25, 10.41],   'J9s': [54.20, 26, 10.71],   'AJo': [62.70, 27, 11.61],   'A5s': [57.70, 28, 11.92],
+            '77': [65.70, 29, 12.37],    'A7s': [59.10, 30, 12.67],   'KJo': [59.50, 31, 13.57],   'A4s': [56.70, 32, 13.88],
+            'A3s': [55.90, 33, 14.18],   'A6s': [57.80, 34, 14.48],   'QJo': [57.00, 35, 15.38],   '66': [62.70, 36, 15.84],
+            'K8s': [56.40, 37, 16.14],   'T8s': [50.40, 38, 16.44],   'A2s': [55.00, 39, 16.74],   '98s': [48.90, 40, 17.04],
+            'J8s': [52.30, 41, 17.35],   'ATo': [61.70, 42, 18.25],   
             
             # Solid hands
-            'Q8s': [54.20, 43, 25.44],  'K7s': [55.40, 44, 26.04],
-            'KTo': [58.50, 45, 26.63],  '55': [59.60, 46, 27.22],   'JTo': [53.80, 47, 27.81],  '87s': [45.70, 48, 28.40],
-            'QTo': [56.00, 49, 29.59],  '44': [56.30, 50, 29.59],   '33': [52.90, 51, 30.18],   '22': [49.30, 52, 30.77],
-            'K6s': [54.30, 53, 31.36],  '97s': [46.90, 54, 31.95],  'K5s': [53.30, 55, 32.54],  '76s': [42.90, 56, 33.14],
-            'T7s': [48.40, 57, 33.73],  'K4s': [52.30, 58, 34.32],  'K3s': [51.40, 59, 34.91],  'K2s': [50.50, 60, 35.50],
-            'Q7s': [52.10, 61, 36.09],  '86s': [43.70, 62, 36.69],  '65s': [40.30, 63, 37.28],  'J7s': [50.30, 64, 37.87],
-            '54s': [38.50, 65, 38.46],  'Q6s': [51.30, 66, 39.05],  '75s': [40.90, 67, 39.64],  '96s': [44.90, 68, 40.24],
-            'Q5s': [50.20, 69, 40.83],  '64s': [38.30, 70, 41.42],  'Q4s': [49.30, 71, 42.01],  'Q3s': [48.40, 72, 42.60],
-            'T9o': [52.40, 73, 43.20],  'T6s': [46.50, 74, 43.79],  'Q2s': [47.50, 75, 44.38],  'A9o': [61.40, 76, 44.97],
-            '53s': [36.50, 77, 45.56],  '85s': [41.70, 78, 46.15],  'J8o': [52.30, 79, 46.75],  'J9o': [54.20, 80, 47.34],
-            'K9o': [58.40, 81, 47.93],  
+            'Q8s': [54.20, 43, 18.55],   'K7s': [55.40, 44, 18.85],
+            'KTo': [58.50, 45, 19.76],   '55': [59.60, 46, 20.21],    'JTo': [53.80, 47, 21.12],   '87s': [45.70, 48, 21.42],
+            'QTo': [56.00, 49, 22.32],   '44': [56.30, 50, 22.78],    '33': [52.90, 51, 23.23],    '22': [49.30, 52, 23.68],
+            'K6s': [54.30, 53, 23.98],   '97s': [46.90, 54, 24.28],   'K5s': [53.30, 55, 24.59],   '76s': [42.90, 56, 24.89],
+            'T7s': [48.40, 57, 25.19],   'K4s': [52.30, 58, 25.49],   'K3s': [51.40, 59, 25.79],   'K2s': [50.50, 60, 26.09],
+            'Q7s': [52.10, 61, 26.40],   '86s': [43.70, 62, 26.70],   '65s': [40.30, 63, 27.00],   'J7s': [50.30, 64, 27.30],
+            '54s': [38.50, 65, 27.60],   'Q6s': [51.30, 66, 27.90],   '75s': [40.90, 67, 28.21],   '96s': [44.90, 68, 28.51],
+            'Q5s': [50.20, 69, 28.81],   '64s': [38.30, 70, 29.11],   'Q4s': [49.30, 71, 29.41],   'Q3s': [48.40, 72, 29.71],
+            'T9o': [52.40, 73, 30.62],   'T6s': [46.50, 74, 30.92],   'Q2s': [47.50, 75, 31.22],   'A9o': [61.40, 76, 32.13],
+            '53s': [36.50, 77, 32.43],   '85s': [41.70, 78, 32.73],   'J9o': [54.20, 79, 33.63],   'K9o': [58.40, 80, 34.54],
             
-            # Marginal hands
-            'J5s': [47.50, 82, 48.52],  'Q9o': [56.10, 83, 49.11],  '43s': [35.70, 84, 49.70],
-            '74s': [38.90, 85, 50.30],  'J4s': [46.50, 86, 50.89],  'J3s': [45.70, 87, 51.48],  '95s': [42.90, 88, 52.07],
-            'J2s': [44.70, 89, 52.66],  '63s': [36.40, 90, 53.25],  'A8o': [60.30, 91, 53.85],  '52s': [34.50, 92, 54.44],
-            'T5s': [44.50, 93, 55.03],  '84s': [39.70, 94, 55.62],  'T4s': [43.70, 95, 56.21],  'T3s': [42.80, 96, 56.80],
-            '42s': [33.70, 97, 57.40],  'T2s': [42.00, 98, 57.99],  '98o': [48.90, 99, 58.58],  'T8o': [50.40, 100, 59.17],
-            'A5o': [57.70, 101, 59.76], 'A7o': [59.10, 102, 60.36], '73s': [37.00, 103, 60.95], 'A4o': [56.70, 104, 61.54],
-            '32s': [33.10, 105, 62.13], '94s': [40.90, 106, 62.72], '93s': [40.30, 107, 63.31], 'J8o': [52.30, 108, 63.91],
-            'A3o': [55.90, 109, 64.50], '62s': [34.40, 110, 65.09], '92s': [39.40, 111, 65.68], 'K8o': [56.40, 112, 66.27],
-            'A6o': [57.80, 113, 66.86], '87o': [45.70, 114, 67.46], 'Q8o': [54.20, 115, 68.05], '83s': [37.80, 116, 68.64],
-            'A2o': [55.00, 117, 69.23], '82s': [37.20, 118, 69.82], '97o': [46.90, 119, 70.41], '72s': [35.10, 120, 71.01],
-            '76o': [42.90, 121, 71.60], 'K7o': [55.40, 122, 72.19], '65o': [40.30, 123, 72.78], 'T7o': [48.40, 124, 73.37],
-            'K6o': [54.30, 125, 73.96], '86o': [43.70, 126, 74.56], '54o': [38.50, 127, 75.15], 'K5o': [53.30, 128, 75.74],
-            'J7o': [50.30, 129, 76.33], '75o': [40.90, 130, 76.92], 'Q7o': [52.10, 131, 77.51], 'K4o': [52.30, 132, 78.11],
-            'K3o': [51.40, 133, 78.70], '96o': [44.90, 134, 79.29], 
+            # Marginal Hands
+            'J5s': [47.50, 81, 34.84],   'Q9o': [56.10, 82, 35.75],   '43s': [35.70, 83, 36.05],   '74s': [38.90, 84, 36.35],
+            'J4s': [46.50, 85, 36.65],   'J3s': [45.70, 86, 36.95],   '95s': [42.90, 87, 37.25],   'J2s': [44.70, 88, 37.56],
+            '63s': [36.40, 89, 37.86],   'A8o': [60.30, 90, 38.76],   '52s': [34.50, 91, 39.06],   'T5s': [44.50, 92, 39.37],
+            '84s': [39.70, 93, 39.67],   'T4s': [43.70, 94, 39.97],   'T3s': [42.80, 95, 40.27],   '42s': [33.70, 96, 40.57],
+            'T2s': [42.00, 97, 40.87],   '98o': [48.90, 98, 41.78],   'T8o': [50.40, 99, 42.68],   'A5o': [57.70, 100, 43.59],
+            'A7o': [59.10, 101, 44.49],  '73s': [37.00, 102, 44.80],  'A4o': [56.70, 103, 45.70],  '32s': [33.10, 104, 46.00],
+            '94s': [40.90, 105, 46.30],  '93s': [40.30, 106, 46.61],  'J8o': [52.30, 107, 47.51],  'A3o': [55.90, 108, 48.42],
+            '62s': [34.40, 109, 48.72],  '92s': [39.40, 110, 49.02],  'K8o': [56.40, 111, 49.92],  'A6o': [57.80, 112, 50.83],
+            '87o': [45.70, 113, 51.73],  'Q8o': [54.20, 114, 52.64],  '83s': [37.80, 115, 52.94],  'A2o': [55.00, 116, 53.85],
+            '82s': [37.20, 117, 54.15],  '97o': [46.90, 118, 55.05],  '72s': [35.10, 119, 55.35],  '76o': [42.90, 120, 56.26],
+            'K7o': [55.40, 121, 57.16],  '65o': [40.30, 122, 58.07],  'T7o': [48.40, 123, 58.97],  'K6o': [54.30, 124, 59.88],
+            '86o': [43.70, 125, 60.78],  '54o': [38.50, 126, 61.69],  'K5o': [53.30, 127, 62.59],  'J7o': [50.30, 128, 63.50],
+            '75o': [40.90, 129, 64.40],  'Q7o': [52.10, 130, 65.31],  'K4o': [52.30, 131, 66.21],  'K3o': [51.40, 132, 67.12],
+            '96o': [44.90, 133, 68.02],  
+
+            # Bad Hands
+            'K2o': [50.50, 134, 68.93],  '64o': [38.30, 135, 69.83],  'Q6o': [51.30, 136, 70.74],
+            '53o': [36.50, 137, 71.64],  '85o': [41.70, 138, 72.55],  'T6o': [46.50, 139, 73.45],  'Q5o': [50.20, 140, 74.36],
+            '43o': [35.70, 141, 75.26],  'Q4o': [49.30, 142, 76.17],  'Q3o': [48.40, 143, 77.07],  '74o': [38.90, 144, 77.98],
+            'Q2o': [47.50, 145, 78.88],  'J6o': [48.30, 146, 79.79],  '63o': [36.40, 147, 80.69],  'J5o': [47.50, 148, 81.60],
+            '95o': [42.90, 149, 82.50],  '52o': [34.50, 150, 83.41],  'J4o': [46.50, 151, 84.31],  'J3o': [45.70, 152, 85.22],
             
-            # Pretty bad hands
-            'K2o': [50.50, 135, 79.88], '64o': [38.30, 136, 80.47],
-            'Q6o': [51.30, 137, 81.07], '53o': [36.50, 138, 81.66], '85o': [41.70, 139, 82.25], 'T6o': [46.50, 140, 82.84],
-            'Q5o': [50.20, 141, 83.43], '43o': [35.70, 142, 84.02], 'Q4o': [49.30, 143, 84.62], 'Q3o': [48.40, 144, 85.21],
-            '74o': [38.90, 145, 85.80], 'Q2o': [47.50, 146, 86.39], 'J6o': [48.30, 147, 86.98], '63o': [36.40, 148, 87.57],
-            'J5o': [47.50, 149, 88.17], '95o': [42.90, 150, 88.76], '52o': [34.50, 151, 89.35], 'J4o': [46.50, 152, 89.94],
-            'J3o': [45.70, 153, 90.53],
-            
-            # Garbage hands (always fold unless there's bounty)
-            '42o': [33.70, 154, 91.12], 'J2o': [44.70, 155, 91.71], '84o': [39.70, 156, 92.31],
-            'T5o': [44.50, 157, 92.90], 'T4o': [43.70, 158, 93.49], '32o': [33.10, 159, 94.08], 'T3o': [42.80, 160, 94.67],
-            '73o': [37.00, 161, 95.26], 'T2o': [42.00, 162, 95.85], '62o': [34.40, 163, 96.45], '94o': [40.90, 164, 97.04],
-            '93o': [40.30, 165, 97.63], '92o': [39.40, 166, 98.22], '83o': [37.80, 167, 98.81], '82o': [37.20, 168, 99.40],
-            '72o': [35.10, 169, 100.0]
+            # Trash Hands
+            '42o': [33.70, 153, 86.12],  'J2o': [44.70, 154, 87.03],  '84o': [39.70, 155, 87.93],  'T5o': [44.50, 156, 88.84],
+            'T4o': [43.70, 157, 89.74],  '32o': [33.10, 158, 90.65],  'T3o': [42.80, 159, 91.55],  '73o': [37.00, 160, 92.46],
+            'T2o': [42.00, 161, 93.36],  '62o': [34.40, 162, 94.27],  '94o': [40.90, 163, 95.17],  '93o': [40.30, 164, 96.08],
+            '92o': [39.40, 165, 96.98],  '83o': [37.80, 166, 97.89],  '82o': [37.20, 167, 98.79],  '72o': [35.10, 168, 100.0]
         }
 
         # Define raise sizes based on number of previous raises
@@ -102,6 +110,9 @@ class Player(Bot):
             4: 2.0,
             5: float('inf') 
         }
+
+        # Define opening ranges
+        self.sb_open_range = 86.0  # Percentage of hands to open from SB
 
         # Track opponent tendencies
         self.opponent_stats = {
@@ -115,6 +126,8 @@ class Player(Bot):
         self.current_round_raises = 0
         self.current_round_num = 0
 
+        self.is_preflop_aggressor = False
+
     def handle_new_round(self, game_state, round_state, active):
         '''
         Called when a new round starts.
@@ -123,6 +136,9 @@ class Player(Bot):
         if self.current_round_num != game_state.round_num:
             self.current_round_raises = 0
             self.current_round_num = game_state.round_num
+
+        # Reset the aggressor status at the start of each round
+        self.is_preflop_aggressor = False
 
     def handle_round_over(self, game_state, terminal_state, active):
         '''
@@ -310,14 +326,15 @@ class Player(Bot):
         # SB specific logic - only raise or fold, never call
         if is_sb and my_contribution <= 1 and opp_contribution <= 2:
             if RaiseAction in legal_actions:
-                if base_percentile <= 88 or has_bounty:  # Open top 88% or bounty hands
+                if base_percentile <= self.sb_open_range or has_bounty:
                     min_raise, max_raise = round_state.raise_bounds()
                     pot = my_contribution + opp_contribution
                     raise_multiplier = random.uniform(2.0, 2.50)
                     raise_amount = int(pot * raise_multiplier)
                     raise_amount = max(min_raise, min(max_raise, raise_amount))
                     self.current_round_raises += 1  # Increment raise counter
-                    print(f"Opening from SB with {'bounty hand' if has_bounty else 'top 88%'} - Raising {raise_amount} ({raise_multiplier:.1f}x pot)", file=sys.stderr)
+                    self.is_preflop_aggressor = True  # Add this line
+                    print(f"Opening from SB with {'bounty hand' if has_bounty else f'top {self.sb_open_range}%'} - Raising {raise_amount} ({raise_multiplier:.1f}x pot)", file=sys.stderr)
                     return RaiseAction(raise_amount)
             print(f"Folding from SB - hand too weak", file=sys.stderr)
             return FoldAction()
@@ -336,12 +353,29 @@ class Player(Bot):
             if has_bounty:
                 print(f"Calling with bounty card", file=sys.stderr)
                 return CallAction()
-            elif pot_odds >= 3 and range_percentile <= 60:
-                print(f"Calling with good pot odds", file=sys.stderr)
-                return CallAction()
-            elif pot_odds >= 2 and range_percentile <= 40:
-                print(f"Calling with decent pot odds and strong hand", file=sys.stderr)
-                return CallAction()
+            
+            # Calculate required equity from pot odds
+            my_stack = round_state.stacks[active]
+            opp_stack = round_state.stacks[1-active]
+            my_contribution = STARTING_STACK - my_stack
+            opp_contribution = STARTING_STACK - opp_stack
+            call_amount = max(0, opp_contribution - my_contribution)
+            
+            if call_amount > 0:
+                total_pot = my_contribution + opp_contribution + call_amount
+                pot_odds = total_pot / call_amount
+                required_equity = 1 / (1 + pot_odds)
+                required_percentile = required_equity * 100
+                
+                print(f"Pot odds: {pot_odds:.2f}:1", file=sys.stderr)
+                print(f"Required equity: {required_equity:.1%}", file=sys.stderr)
+                print(f"Required percentile: {required_percentile:.1f}", file=sys.stderr)
+                print(f"Hand percentile: {range_percentile:.1f}", file=sys.stderr)
+                
+                # If our hand is better than required percentile, call
+                if range_percentile <= 100 - required_percentile:
+                    print(f"Calling - hand meets required strength threshold", file=sys.stderr)
+                    return CallAction()
 
         # Rest of decision making (for BB or facing raises)
         if RaiseAction in legal_actions:
@@ -361,18 +395,6 @@ class Player(Bot):
                 
                 print(f"Raising with strong hand (top {raise_threshold:.1f}%) - Raising {raise_amount} ({raise_multiplier:.1f}x pot)", file=sys.stderr)
                 return RaiseAction(raise_amount)
-
-        if CallAction in legal_actions:
-            # Call with good pot odds or strong hands
-            if has_bounty:
-                print(f"Calling with bounty card", file=sys.stderr)
-                return CallAction()
-            elif pot_odds >= 3 and range_percentile <= 60:
-                print(f"Calling with good pot odds", file=sys.stderr)
-                return CallAction()
-            elif pot_odds >= 2 and range_percentile <= 40:
-                print(f"Calling with decent pot odds and strong hand", file=sys.stderr)
-                return CallAction()
 
         if CheckAction in legal_actions:
             print(f"Checking when given the option", file=sys.stderr)
@@ -397,54 +419,25 @@ class Player(Bot):
         my_contrib = STARTING_STACK - my_stack
         opp_contrib = STARTING_STACK - opp_stack
         pot = my_contrib + opp_contrib
-
+        
         def analyze_previous_action(my_contrib, opp_contrib, is_sb, street):
             """
             Analyzes previous betting patterns to inform decision making
             Returns: (is_opponent_capped, previous_streets_checked)
             """
-            # Determine preflop aggressor
-            we_raised_preflop = False
-            they_raised_preflop = False
-            previous_streets_checked = True
-            
-            # In SB
-            if is_sb:
-                if my_contrib == 6:  # We opened to 6
-                    we_raised_preflop = True
-                elif my_contrib > 6:  # We 4-bet
-                    we_raised_preflop = True
-                if opp_contrib > 6:  # They 3-bet
-                    they_raised_preflop = True
-                
-            # In BB
-            else:
-                if my_contrib > 2:  # We 3-bet from BB
-                    we_raised_preflop = True
-                if opp_contrib > 2:  # They opened
-                    they_raised_preflop = True
-            
-            # Opponent is capped if they just called our raise
-            is_opponent_capped = we_raised_preflop and not they_raised_preflop
+            # Use the stored preflop aggressor status instead of contributions
+            hero_preflop_aggressor = self.is_preflop_aggressor
             
             # Check if previous streets had action
+            previous_streets_checked = True
             if street > 3:  # On turn or river
                 previous_streets_checked = my_contrib == opp_contrib
-            
-            print(f"\nAction Analysis:", file=sys.stderr)
-            print(f"We raised preflop: {we_raised_preflop}", file=sys.stderr)
-            print(f"They raised preflop: {they_raised_preflop}", file=sys.stderr)
-            print(f"Our contribution: {my_contrib}", file=sys.stderr)
-            print(f"Their contribution: {opp_contrib}", file=sys.stderr)
-            print(f"Opponent is capped: {is_opponent_capped}", file=sys.stderr)
-            print(f"Previous streets checked through: {previous_streets_checked}", file=sys.stderr)
-            
-            return is_opponent_capped, previous_streets_checked
+            return hero_preflop_aggressor, previous_streets_checked
 
         def evaluate_hand_and_board():
             """
             Evaluates hand strength and board texture
-            Returns: (hand_value, hand_type, board_type, relative_strength)
+            Returns: (hand_value, hand_type, board_type, relative_strength, board_favor)
             """
             hole_cards = [eval7.Card(card) for card in round_state.hands[active]]
             board_cards = [eval7.Card(card) for card in round_state.deck[:round_state.street]]
@@ -513,74 +506,156 @@ class Player(Bot):
             print(f"Board type: {board_type}", file=sys.stderr)
             print(f"Relative strength: {relative_strength:.2%}", file=sys.stderr)
             
-            return hand_value, hand_type, board_type, relative_strength
+            # New board texture analysis for aggressor vs caller
+            def analyze_board_favor(board_cards):
+                """
+                Analyzes if board texture favors preflop aggressor or caller
+                Returns: 'aggressor', 'caller', or 'neutral'
+                """
+                # Convert eval7 ranks to our numeric system
+                # eval7 uses: 2=0, 3=1, 4=2, ..., T=8, J=9, Q=10, K=11, A=12
+                def convert_eval7_rank(rank):
+                    if isinstance(rank, int):
+                        return rank + 2  # Convert eval7's 0-12 to our 2-14
+                    return self.rank_to_numeric[rank]
+
+                ranks = [card.rank for card in board_cards]
+                suits = [card.suit for card in board_cards]
+                
+                # Convert ranks to numeric values (2-14)
+                numeric_ranks = []
+                for rank in ranks:
+                    numeric_rank = convert_eval7_rank(rank)
+                    numeric_ranks.append(numeric_rank)
+                
+                # Sort ranks for analysis
+                numeric_ranks.sort(reverse=True)
+                print(f"Sorted numeric ranks: {numeric_ranks}", file=sys.stderr)
+                
+                # Calculate characteristics
+                high_cards = sum(1 for r in numeric_ranks if r >= 10)
+                connected_cards = sum(1 for i in range(len(numeric_ranks)-1) if numeric_ranks[i] - numeric_ranks[i+1] == 1)
+                suited_cards = max([suits.count(s) for s in set(suits)])
+                avg_rank = sum(numeric_ranks) / len(numeric_ranks)
+                
+                print(f"Average calculation: {sum(numeric_ranks)} / {len(numeric_ranks)} = {avg_rank:.2f}", file=sys.stderr)
+                
+                # Calculate gaps between unique ranks
+                unique_ranks = sorted(set(numeric_ranks), reverse=True)
+                gaps = 0
+                for i in range(len(unique_ranks)-1):
+                    gap = unique_ranks[i] - unique_ranks[i+1] - 1
+                    gaps += gap
+                
+                # Analyze board texture
+                factors = {
+                    'aggressor': 0,
+                    'caller': 0
+                }
+                
+                # Factors favoring aggressor
+                if high_cards >= 2: factors['aggressor'] += 2
+                if gaps >= 3: factors['aggressor'] += 1
+                if avg_rank > 10: factors['aggressor'] += 1
+                if connected_cards == 0: factors['aggressor'] += 1
+                
+                # Factors favoring caller
+                if connected_cards >= 2: factors['caller'] += 2
+                if suited_cards >= 2: factors['caller'] += 1
+                if avg_rank < 8: factors['caller'] += 1
+                if high_cards == 0: factors['caller'] += 1
+                
+                # Determine overall favor
+                favor = 'neutral'
+                if factors['aggressor'] > factors['caller'] + 1:
+                    favor = 'aggressor'
+                elif factors['caller'] > factors['aggressor'] + 1:
+                    favor = 'caller'
+                
+                # Debug prints
+                print(f"\nBoard texture analysis:", file=sys.stderr)
+                print(f"High cards: {high_cards}", file=sys.stderr)
+                print(f"Connected cards: {connected_cards}", file=sys.stderr)
+                print(f"Suited cards: {suited_cards}", file=sys.stderr)
+                print(f"Average rank: {avg_rank:.1f}", file=sys.stderr)
+                print(f"Gaps: {gaps}", file=sys.stderr)
+                print(f"Aggressor points: {factors['aggressor']}", file=sys.stderr)
+                print(f"Caller points: {factors['caller']}", file=sys.stderr)
+                print(f"Board favors: {favor}", file=sys.stderr)
+                
+                return favor
+
+            board_favor = analyze_board_favor(board_cards)
+            
+            return hand_value, hand_type, board_type, relative_strength, board_favor
 
         # Get hand evaluation and board analysis
-        hand_value, hand_type, board_type, relative_strength = evaluate_hand_and_board()
-        is_opponent_capped, previous_streets_checked = analyze_previous_action(my_contrib, opp_contrib, is_sb, street)
+        hand_value, hand_type, board_type, relative_strength, board_favor = evaluate_hand_and_board()
+        hero_preflop_aggressor, previous_streets_checked = analyze_previous_action(my_contrib, opp_contrib, is_sb, street)
         
-        # Decision making
         legal_actions = round_state.legal_actions()
-
+        
         print(f"\nDecision point analysis:", file=sys.stderr)
         print(f"Street: {street_name}", file=sys.stderr)
+        print(f"Position: {'SB (OOP)' if is_sb else 'BB (IP)'}", file=sys.stderr)
         print(f"Pot size: {pot}", file=sys.stderr)
+        print(f"Hero was preflop aggressor: {hero_preflop_aggressor}", file=sys.stderr)
+        print(f"Previous streets checked through: {previous_streets_checked}", file=sys.stderr)    
         print(f"Relative strength: {relative_strength:.2%}", file=sys.stderr)
         
-        # Very strong hands (95%+ equity)
-        if relative_strength > 0.95:
-            checkraise_frequency = 0.5
-            if previous_streets_checked:
-                checkraise_frequency = 0.9
-            elif not is_opponent_capped:
-                checkraise_frequency = 0.3
+        # FLOP STRATEGY
+        if street == 3:
+            if hero_preflop_aggressor:  # Add this condition
+                if relative_strength > 0.75:  # Strong hand as preflop aggressor
+                    if RaiseAction in legal_actions:
+                        min_raise, max_raise = round_state.raise_bounds()
+                        bet_amount = min(max_raise, int(pot * 0.66))  # 2/3 pot bet
+                        print(f"Betting flop as preflop aggressor with strong hand: {bet_amount} into {pot}", file=sys.stderr)
+                        return RaiseAction(bet_amount)
             
-            if not is_opponent_capped and board_type in ['dry', 'paired']:
-                checkraise_frequency = 0.7
+            if not is_sb:  # In position
+                if RaiseAction in legal_actions:
+                    if relative_strength > 0.70:  # Strong hand IP
+                        min_raise, max_raise = round_state.raise_bounds()
+                        bet_amount = min(max_raise, int(pot * random.uniform(0.33, 0.5)))
+                        print(f"IP flop bet with strong hand: {bet_amount} into {pot}", file=sys.stderr)
+                        return RaiseAction(bet_amount)
+                if CheckAction in legal_actions:
+                    return CheckAction()
+            else:  # Out of position
+                if CheckAction in legal_actions:
+                    return CheckAction()
             
-            rand = random.random()
-            print(f"Random roll: {rand:.2f} vs threshold: {checkraise_frequency:.2f}", file=sys.stderr)
-            
-            if CheckAction in legal_actions and rand < checkraise_frequency:
-                print(f"Check-raising with strong hand ({relative_strength:.1%})", file=sys.stderr)
-                return CheckAction()
-            elif RaiseAction in legal_actions:
-                min_raise, max_raise = round_state.raise_bounds()
-                bet_amount = min(max_raise, int(pot * (2.0 if street_name == 'River' else 1.5)))
-                print(f"Betting strong hand: {bet_amount} into {pot}", file=sys.stderr)
-                return RaiseAction(bet_amount)
-        
-        # Strong hands (70-95% equity)
-        elif relative_strength > 0.70:
-            if RaiseAction in legal_actions and random.random() < 0.6:
-                min_raise, max_raise = round_state.raise_bounds()
-                bet_amount = min(max_raise, int(pot * 0.75))
-                print(f"Value betting strong hand: {bet_amount} into {pot}", file=sys.stderr)
-                return RaiseAction(bet_amount)
-            elif CheckAction in legal_actions:
-                print(f"Checking strong hand for deception", file=sys.stderr)
-                return CheckAction()
-        
-        # Medium hands (40-70% equity)
-        elif relative_strength > 0.40:
-            if CheckAction in legal_actions:
-                print(f"Checking medium strength hand", file=sys.stderr)
-                return CheckAction()
-            elif CallAction in legal_actions:
+        # TURN STRATEGY
+        elif street == 4:
+            if CallAction in legal_actions:
                 call_amount = max(0, opp_contrib - my_contrib)
-                if pot / call_amount >= 3:  # Getting 3:1 or better
-                    print(f"Calling with medium hand - good pot odds", file=sys.stderr)
+                # If facing small bet (less than 1/3 pot) with strong hand, raise
+                if relative_strength > 0.85 and call_amount < (pot / 3):
+                    if RaiseAction in legal_actions:
+                        min_raise, max_raise = round_state.raise_bounds()
+                        bet_amount = min(max_raise, int(pot * 0.75))
+                        print(f"Raising small turn bet with strong hand: {bet_amount} into {pot}", file=sys.stderr)
+                        return RaiseAction(bet_amount)
+                # Call with good equity
+                elif relative_strength > 0.60:
+                    print(f"Calling turn with good equity", file=sys.stderr)
                     return CallAction()
-        
-        # Weak hands
-        else:
-            if CheckAction in legal_actions:
-                print(f"Checking weak hand", file=sys.stderr)
-                return CheckAction()
-            elif FoldAction in legal_actions:
-                print(f"Folding weak hand", file=sys.stderr)
-                return FoldAction()
-        
+                
+        # RIVER STRATEGY
+        elif street == 5:
+            # Only raise nutted hands on river (90%+ equity)
+            if relative_strength > 0.90:
+                if RaiseAction in legal_actions:
+                    min_raise, max_raise = round_state.raise_bounds()
+                    bet_amount = min(max_raise, int(pot * 0.75))
+                    print(f"Value betting river with very strong hand: {bet_amount} into {pot}", file=sys.stderr)
+                    return RaiseAction(bet_amount)
+            # Call with good but not great hands
+            elif relative_strength > 0.75 and CallAction in legal_actions:
+                print(f"Calling river with good hand", file=sys.stderr)
+                return CallAction()
+            
         # Default actions if nothing else matched
         if CheckAction in legal_actions:
             print(f"Checking by default", file=sys.stderr)
