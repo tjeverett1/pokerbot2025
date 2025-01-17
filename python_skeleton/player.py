@@ -99,7 +99,7 @@ class Player(Bot):
             1: 2.2,
             2: 2.3, 
             3: 2.4, 
-            4: 2.7,
+            4: 2.0,
             5: float('inf') 
         }
 
@@ -310,14 +310,14 @@ class Player(Bot):
         # SB specific logic - only raise or fold, never call
         if is_sb and my_contribution <= 1 and opp_contribution <= 2:
             if RaiseAction in legal_actions:
-                if base_percentile <= 83 or has_bounty:  # Open top 83% or bounty hands
+                if base_percentile <= 88 or has_bounty:  # Open top 88% or bounty hands
                     min_raise, max_raise = round_state.raise_bounds()
                     pot = my_contribution + opp_contribution
                     raise_multiplier = random.uniform(2.0, 2.50)
                     raise_amount = int(pot * raise_multiplier)
                     raise_amount = max(min_raise, min(max_raise, raise_amount))
                     self.current_round_raises += 1  # Increment raise counter
-                    print(f"Opening from SB with {'bounty hand' if has_bounty else 'top 83%'} - Raising {raise_amount} ({raise_multiplier:.1f}x pot)", file=sys.stderr)
+                    print(f"Opening from SB with {'bounty hand' if has_bounty else 'top 88%'} - Raising {raise_amount} ({raise_multiplier:.1f}x pot)", file=sys.stderr)
                     return RaiseAction(raise_amount)
             print(f"Folding from SB - hand too weak", file=sys.stderr)
             return FoldAction()
@@ -380,23 +380,101 @@ class Player(Bot):
         
         print(f"Folding - insufficient pot odds or weak hand", file=sys.stderr)
         return FoldAction()
+    
 
     def get_postflop_action(self, game_state, round_state, active):
         """
-        Helper function to determine postflop action based on hand strength
-        Returns: Action object (RaiseAction, CallAction, CheckAction, or FoldAction)
+        GTO-based postflop strategy using pot odds and board texture
         """
-        def evaluate_hand_strength():
+        # Get street and position info
+        street = round_state.street
+        is_sb = not bool(active)
+        street_name = ['Flop', 'Turn', 'River'][street-3]
+        
+        # Calculate stack sizes and contributions
+        my_stack = round_state.stacks[active]
+        opp_stack = round_state.stacks[1-active]
+        my_contrib = STARTING_STACK - my_stack
+        opp_contrib = STARTING_STACK - opp_stack
+        pot = my_contrib + opp_contrib
+
+        def analyze_previous_action(my_contrib, opp_contrib, is_sb, street):
             """
-            Helper function to evaluate postflop hand strength using eval7
-            Returns: (hand_value, hand_type)
+            Analyzes previous betting patterns to inform decision making
+            Returns: (is_opponent_capped, previous_streets_checked)
+            """
+            # Determine preflop aggressor
+            we_raised_preflop = False
+            they_raised_preflop = False
+            previous_streets_checked = True
+            
+            # In SB
+            if is_sb:
+                if my_contrib == 6:  # We opened to 6
+                    we_raised_preflop = True
+                elif my_contrib > 6:  # We 4-bet
+                    we_raised_preflop = True
+                if opp_contrib > 6:  # They 3-bet
+                    they_raised_preflop = True
+                
+            # In BB
+            else:
+                if my_contrib > 2:  # We 3-bet from BB
+                    we_raised_preflop = True
+                if opp_contrib > 2:  # They opened
+                    they_raised_preflop = True
+            
+            # Opponent is capped if they just called our raise
+            is_opponent_capped = we_raised_preflop and not they_raised_preflop
+            
+            # Check if previous streets had action
+            if street > 3:  # On turn or river
+                previous_streets_checked = my_contrib == opp_contrib
+            
+            print(f"\nAction Analysis:", file=sys.stderr)
+            print(f"We raised preflop: {we_raised_preflop}", file=sys.stderr)
+            print(f"They raised preflop: {they_raised_preflop}", file=sys.stderr)
+            print(f"Our contribution: {my_contrib}", file=sys.stderr)
+            print(f"Their contribution: {opp_contrib}", file=sys.stderr)
+            print(f"Opponent is capped: {is_opponent_capped}", file=sys.stderr)
+            print(f"Previous streets checked through: {previous_streets_checked}", file=sys.stderr)
+            
+            return is_opponent_capped, previous_streets_checked
+
+        def evaluate_hand_and_board():
+            """
+            Evaluates hand strength and board texture
+            Returns: (hand_value, hand_type, board_type, relative_strength)
             """
             hole_cards = [eval7.Card(card) for card in round_state.hands[active]]
             board_cards = [eval7.Card(card) for card in round_state.deck[:round_state.street]]
             
-            # Evaluate the hand
+            # Basic hand strength
             all_cards = hole_cards + board_cards
             hand_value = eval7.evaluate(all_cards)
+            
+            # Calculate relative hand strength
+            # Generate all possible two card combinations
+            deck = []
+            ranks = '23456789TJQKA'
+            suits = 'hdcs'
+            for rank in ranks:
+                for suit in suits:
+                    card_str = rank + suit
+                    if eval7.Card(card_str) not in all_cards:  # Skip cards we can see
+                        deck.append(eval7.Card(card_str))
+            
+            # Generate all possible opponent hands
+            possible_hands = 0
+            better_hands = 0
+            for i in range(len(deck)):
+                for j in range(i + 1, len(deck)):
+                    possible_hands += 1
+                    opp_value = eval7.evaluate(board_cards + [deck[i], deck[j]])
+                    if opp_value > hand_value:
+                        better_hands += 1
+            
+            relative_strength = 1 - (better_hands / possible_hands) if possible_hands > 0 else 1
             
             # Convert hand value to hand type
             hand_types = {
@@ -410,65 +488,110 @@ class Player(Bot):
                 7: 'Four of a Kind',
                 8: 'Straight Flush'
             }
-            
             hand_type = hand_types[hand_value >> 24]
+            
+            # Board texture analysis
+            suits = [card.suit for card in board_cards]
+            ranks = [card.rank for card in board_cards]
+            
+            # Check for draws
+            flush_draw = len(set(suits)) == 3 and any(suits.count(s) >= 3 for s in suits)
+            straight_draw = len(set(ranks)) >= 3 and max(ranks) - min(ranks) <= 4
+            paired_board = len(set(ranks)) < len(ranks)
+            
+            # Categorize board type
+            if paired_board:
+                board_type = 'paired'
+            elif flush_draw and straight_draw:
+                board_type = 'very_draw_heavy'
+            elif flush_draw or straight_draw:
+                board_type = 'draw_heavy'
+            else:
+                board_type = 'dry'
+            
             print(f"Hand evaluation - Type: {hand_type}, Value: {hand_value}", file=sys.stderr)
-            return hand_value, hand_type
+            print(f"Board type: {board_type}", file=sys.stderr)
+            print(f"Relative strength: {relative_strength:.2%}", file=sys.stderr)
+            
+            return hand_value, hand_type, board_type, relative_strength
 
-        # Get hand evaluation
-        hand_value, hand_type = evaluate_hand_strength()
-
-        # Rest of postflop logic
+        # Get hand evaluation and board analysis
+        hand_value, hand_type, board_type, relative_strength = evaluate_hand_and_board()
+        is_opponent_capped, previous_streets_checked = analyze_previous_action(my_contrib, opp_contrib, is_sb, street)
+        
+        # Decision making
         legal_actions = round_state.legal_actions()
-        my_stack = round_state.stacks[active]
-        opp_stack = round_state.stacks[1-active]
-        my_contribution = STARTING_STACK - my_stack
-        opp_contribution = STARTING_STACK - opp_stack
-        pot = my_contribution + opp_contribution
+
+        print(f"\nDecision point analysis:", file=sys.stderr)
+        print(f"Street: {street_name}", file=sys.stderr)
+        print(f"Pot size: {pot}", file=sys.stderr)
+        print(f"Relative strength: {relative_strength:.2%}", file=sys.stderr)
         
-        # Define betting strategy based on hand strength
-        if hand_type in ['Straight Flush', 'Four of a Kind', 'Full House', 'Flush', 'Straight']:
-            # Very strong hands - bet big or raise
-            if RaiseAction in legal_actions:
-                min_raise, max_raise = round_state.raise_bounds()
-                bet_amount = min(max_raise, pot)  # Pot-sized bet
-                print(f"Value betting {bet_amount} with {hand_type}", file=sys.stderr)
-                return RaiseAction(bet_amount)
+        # Very strong hands (95%+ equity)
+        if relative_strength > 0.95:
+            checkraise_frequency = 0.5
+            if previous_streets_checked:
+                checkraise_frequency = 0.9
+            elif not is_opponent_capped:
+                checkraise_frequency = 0.3
             
-        elif hand_type in ['Three of a Kind', 'Two Pair']:
-            # Strong hands - bet medium or call
-            if RaiseAction in legal_actions and random.random() < 0.8:  # 80% bet frequency
+            if not is_opponent_capped and board_type in ['dry', 'paired']:
+                checkraise_frequency = 0.7
+            
+            rand = random.random()
+            print(f"Random roll: {rand:.2f} vs threshold: {checkraise_frequency:.2f}", file=sys.stderr)
+            
+            if CheckAction in legal_actions and rand < checkraise_frequency:
+                print(f"Check-raising with strong hand ({relative_strength:.1%})", file=sys.stderr)
+                return CheckAction()
+            elif RaiseAction in legal_actions:
                 min_raise, max_raise = round_state.raise_bounds()
-                bet_amount = min(max_raise, int(pot * 0.75))  # 3/4 pot bet
-                print(f"Value betting {bet_amount} with {hand_type}", file=sys.stderr)
-                return RaiseAction(bet_amount)
-                
-        elif hand_type == 'Pair':
-            # Medium strength - bet small or call
-            if RaiseAction in legal_actions and random.random() < 0.5:  # 50% bet frequency
-                min_raise, max_raise = round_state.raise_bounds()
-                bet_amount = min(max_raise, int(pot * 0.5))  # Half pot bet
-                print(f"Value betting {bet_amount} with {hand_type}", file=sys.stderr)
+                bet_amount = min(max_raise, int(pot * (2.0 if street_name == 'River' else 1.5)))
+                print(f"Betting strong hand: {bet_amount} into {pot}", file=sys.stderr)
                 return RaiseAction(bet_amount)
         
-        # Default actions based on hand strength
+        # Strong hands (70-95% equity)
+        elif relative_strength > 0.70:
+            if RaiseAction in legal_actions and random.random() < 0.6:
+                min_raise, max_raise = round_state.raise_bounds()
+                bet_amount = min(max_raise, int(pot * 0.75))
+                print(f"Value betting strong hand: {bet_amount} into {pot}", file=sys.stderr)
+                return RaiseAction(bet_amount)
+            elif CheckAction in legal_actions:
+                print(f"Checking strong hand for deception", file=sys.stderr)
+                return CheckAction()
+        
+        # Medium hands (40-70% equity)
+        elif relative_strength > 0.40:
+            if CheckAction in legal_actions:
+                print(f"Checking medium strength hand", file=sys.stderr)
+                return CheckAction()
+            elif CallAction in legal_actions:
+                call_amount = max(0, opp_contrib - my_contrib)
+                if pot / call_amount >= 3:  # Getting 3:1 or better
+                    print(f"Calling with medium hand - good pot odds", file=sys.stderr)
+                    return CallAction()
+        
+        # Weak hands
+        else:
+            if CheckAction in legal_actions:
+                print(f"Checking weak hand", file=sys.stderr)
+                return CheckAction()
+            elif FoldAction in legal_actions:
+                print(f"Folding weak hand", file=sys.stderr)
+                return FoldAction()
+        
+        # Default actions if nothing else matched
         if CheckAction in legal_actions:
-            print(f"Checking with {hand_type}", file=sys.stderr)
+            print(f"Checking by default", file=sys.stderr)
             return CheckAction()
-            
-        if CallAction in legal_actions:
-            if hand_type != 'High Card':  # Call with any pair or better
-                print(f"Calling with {hand_type}", file=sys.stderr)
+        elif CallAction in legal_actions:
+            call_amount = max(0, opp_contrib - my_contrib)
+            if pot / call_amount >= 4:  # Getting 4:1 or better
+                print(f"Calling by default with good odds", file=sys.stderr)
                 return CallAction()
         
-        if FoldAction in legal_actions:
-            print(f"Folding {hand_type}", file=sys.stderr)
-            return FoldAction()
-        
-        # Fallback actions
-        if CheckAction in legal_actions:
-            return CheckAction()
-        
+        print(f"Folding by default", file=sys.stderr)
         return FoldAction()
 
 
