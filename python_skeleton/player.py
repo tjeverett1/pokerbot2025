@@ -128,6 +128,8 @@ class Player(Bot):
 
         self.is_preflop_aggressor = False
 
+        self.previous_street_strength = 0.0  # Add this line
+
     def handle_new_round(self, game_state, round_state, active):
         '''
         Called when a new round starts.
@@ -348,7 +350,31 @@ class Player(Bot):
             call_amount = max(0, opp_contribution - my_contribution)
         pot_odds, total_pot = calculate_pot_odds(my_contribution, opp_contribution, call_amount)
 
+        # Rest of decision making (for BB or facing raises)
+        if RaiseAction in legal_actions:
+            min_raise, max_raise = round_state.raise_bounds()
+            pot = my_contribution + opp_contribution
+            
+            # Randomize between raising top 10-20% of hands when facing action
+            raise_threshold = random.uniform(10.0, 20.0)
+            if range_percentile <= raise_threshold:  
+                # Get raise size multiplier based on number of raises
+                raise_multiplier = self.preflop_raise_sizes.get(self.current_round_raises, float('inf'))
+                
+                # Calculate raise amount
+                raise_amount = int(pot * raise_multiplier)
+                raise_amount = max(min_raise, min(max_raise, raise_amount))
+                self.current_round_raises += 1
+                
+                print(f"Raising with strong hand (top {raise_threshold:.1f}%) - Raising {raise_amount} ({raise_multiplier:.1f}x pot)", file=sys.stderr)
+                return RaiseAction(raise_amount)
+
+        # MOVED: Only check for calling after we've decided not to raise
         if CallAction in legal_actions:
+            # Reset preflop aggressor status if we're calling a 3bet
+            if round_state.street == 0:
+                self.is_preflop_aggressor = False
+                
             # Call with good pot odds or strong hands
             if has_bounty:
                 print(f"Calling with bounty card", file=sys.stderr)
@@ -376,25 +402,6 @@ class Player(Bot):
                 if range_percentile <= 100 - required_percentile:
                     print(f"Calling - hand meets required strength threshold", file=sys.stderr)
                     return CallAction()
-
-        # Rest of decision making (for BB or facing raises)
-        if RaiseAction in legal_actions:
-            min_raise, max_raise = round_state.raise_bounds()
-            pot = my_contribution + opp_contribution
-            
-            # Randomize between raising top 10-20% of hands when facing action
-            raise_threshold = random.uniform(10.0, 20.0)
-            if range_percentile <= raise_threshold:  
-                # Get raise size multiplier based on number of raises
-                raise_multiplier = self.preflop_raise_sizes.get(self.current_round_raises, float('inf'))
-                
-                # Calculate raise amount
-                raise_amount = int(pot * raise_multiplier)
-                raise_amount = max(min_raise, min(max_raise, raise_amount))
-                self.current_round_raises += 1
-                
-                print(f"Raising with strong hand (top {raise_threshold:.1f}%) - Raising {raise_amount} ({raise_multiplier:.1f}x pot)", file=sys.stderr)
-                return RaiseAction(raise_amount)
 
         if CheckAction in legal_actions:
             print(f"Checking when given the option", file=sys.stderr)
@@ -431,7 +438,7 @@ class Player(Bot):
             # Check if previous streets had action
             previous_streets_checked = True
             if street > 3:  # On turn or river
-                previous_streets_checked = my_contrib == opp_contrib
+                previous_streets_checked = self.current_round_raises == 0
             return hero_preflop_aggressor, previous_streets_checked
 
         def evaluate_hand_and_board():
@@ -603,71 +610,201 @@ class Player(Bot):
         print(f"Previous streets checked through: {previous_streets_checked}", file=sys.stderr)    
         print(f"Relative strength: {relative_strength:.2%}", file=sys.stderr)
         
+        # Store current strength for next street
+        self.previous_street_strength = relative_strength
+        
         # FLOP STRATEGY
         if street == 3:
-            if hero_preflop_aggressor:  # Add this condition
-                if relative_strength > 0.75:  # Strong hand as preflop aggressor
+            if hero_preflop_aggressor and self.current_round_raises >= 2:  # 3bet+ pot
+                if board_favor == 'aggressor':
+                    # Random number to determine action
+                    action_rand = random.random()
+                    
                     if RaiseAction in legal_actions:
                         min_raise, max_raise = round_state.raise_bounds()
-                        bet_amount = min(max_raise, int(pot * 0.66))  # 2/3 pot bet
+                        
+                        if action_rand < 0.80:  # 80% small bet
+                            bet_amount = min(max_raise, int(pot * 0.33))
+                            print(f"Small cbet on aggressor-favored board (80% freq): {bet_amount} into {pot}", file=sys.stderr)
+                            return RaiseAction(bet_amount)
+                        elif action_rand < 0.90:  # 10% large bet
+                            bet_amount = min(max_raise, pot)
+                            print(f"Large cbet on aggressor-favored board (10% freq): {bet_amount} into {pot}", file=sys.stderr)
+                            return RaiseAction(bet_amount)
+                    
+                    # 10% check
+                    print(f"Checking aggressor-favored board for balance (10% freq)", file=sys.stderr)
+                    return CheckAction()
+            
+            # Original flop strategy for non-3bet pots continues...
+            if hero_preflop_aggressor:
+                if relative_strength > 0.75:
+                    if RaiseAction in legal_actions:
+                        min_raise, max_raise = round_state.raise_bounds()
+                        bet_amount = min(max_raise, int(pot * 0.66))
                         print(f"Betting flop as preflop aggressor with strong hand: {bet_amount} into {pot}", file=sys.stderr)
                         return RaiseAction(bet_amount)
+                else:
+                    print(f"Checking flop with weak hand as preflop aggressor", file=sys.stderr)
+                    if CheckAction in legal_actions:
+                        return CheckAction()
             
             if not is_sb:  # In position
-                if RaiseAction in legal_actions:
-                    if relative_strength > 0.70:  # Strong hand IP
-                        min_raise, max_raise = round_state.raise_bounds()
-                        bet_amount = min(max_raise, int(pot * random.uniform(0.33, 0.5)))
-                        print(f"IP flop bet with strong hand: {bet_amount} into {pot}", file=sys.stderr)
-                        return RaiseAction(bet_amount)
-                if CheckAction in legal_actions:
-                    return CheckAction()
-            else:  # Out of position
-                if CheckAction in legal_actions:
-                    return CheckAction()
-            
-        # TURN STRATEGY
-        elif street == 4:
-            if CallAction in legal_actions:
-                call_amount = max(0, opp_contrib - my_contrib)
-                # If facing small bet (less than 1/3 pot) with strong hand, raise
-                if relative_strength > 0.85 and call_amount < (pot / 3):
-                    if RaiseAction in legal_actions:
-                        min_raise, max_raise = round_state.raise_bounds()
-                        bet_amount = min(max_raise, int(pot * 0.75))
-                        print(f"Raising small turn bet with strong hand: {bet_amount} into {pot}", file=sys.stderr)
-                        return RaiseAction(bet_amount)
-                # Call with good equity
-                elif relative_strength > 0.60:
-                    print(f"Calling turn with good equity", file=sys.stderr)
+                if RaiseAction in legal_actions and relative_strength > 0.70:
+                    min_raise, max_raise = round_state.raise_bounds()
+                    bet_amount = min(max_raise, int(pot * random.uniform(0.33, 0.5)))
+                    print(f"IP flop bet with strong hand: {bet_amount} into {pot}", file=sys.stderr)
+                    return RaiseAction(bet_amount)
+                
+                # Add calling logic for IP
+                if CallAction in legal_actions and relative_strength > 0.30:
+                    print(f"Calling flop IP with decent hand", file=sys.stderr)
                     return CallAction()
                 
+                if CheckAction in legal_actions:
+                    print(f"Checking flop IP with weak hand", file=sys.stderr)
+                    return CheckAction()
+            else:  # Out of position
+                # Add calling logic for OOP
+                if CallAction in legal_actions and relative_strength > 0.35:
+                    print(f"Calling flop OOP with decent hand", file=sys.stderr)
+                    return CallAction()
+                
+                if CheckAction in legal_actions:
+                    print(f"Checking flop OOP", file=sys.stderr)
+                    return CheckAction()
+            
+            # Default actions if nothing else matched
+            if CheckAction in legal_actions:
+                print(f"Checking flop by default", file=sys.stderr)
+                return CheckAction()
+            elif CallAction in legal_actions:
+                call_amount = max(0, opp_contrib - my_contrib)
+                if pot / call_amount >= 3:  # Getting 3:1 or better
+                    print(f"Calling flop by default with good odds", file=sys.stderr)
+                    return CallAction()
+            
+            print(f"Folding flop by default", file=sys.stderr)
+            return FoldAction()
+
+        # TURN STRATEGY
+        elif street == 4:
+            if hero_preflop_aggressor:
+                # Case 1: We bet flop and got called
+                if self.current_round_raises > 0:
+                    if relative_strength > 0.80:  # Top 20% of hands
+                        if RaiseAction in legal_actions:
+                            min_raise, max_raise = round_state.raise_bounds()
+                            bet_amount = min(max_raise, int(pot * 0.66))  # 2/3 pot bet
+                            print(f"Turn double barrel with strong hand (top 20%): {bet_amount} into {pot}", file=sys.stderr)
+                            return RaiseAction(bet_amount)
+                    else:
+                        if CheckAction in legal_actions:
+                            print(f"Giving up on turn after flop cbet - hand too weak", file=sys.stderr)
+                            return CheckAction()
+                # Case 2: We checked flop, bet if improved
+                else:
+                    if relative_strength > self.previous_street_strength:
+                        if RaiseAction in legal_actions:
+                            min_raise, max_raise = round_state.raise_bounds()
+                            bet_amount = min(max_raise, int(pot * 0.5))  # Half pot delayed cbet
+                            print(f"Delayed turn cbet after improving: {bet_amount} into {pot}", file=sys.stderr)
+                            return RaiseAction(bet_amount)
+            else:  # We called preflop
+                if self.current_round_raises > 0:
+                    # We called a flop bet, check to aggressor
+                    if CheckAction in legal_actions:
+                        print(f"Turn check to aggressor after calling flop", file=sys.stderr)
+                        return CheckAction()
+                else:
+                    # Flop checked through
+                    if relative_strength > self.previous_street_strength and board_favor == 'caller':
+                        if RaiseAction in legal_actions:
+                            min_raise, max_raise = round_state.raise_bounds()
+                            # Randomize between 2/3 and 4/3 pot
+                            sizing_multiplier = random.uniform(0.66, 1.33)
+                            bet_amount = min(max_raise, int(pot * sizing_multiplier))
+                            print(f"Turn probe bet on caller-favored board: {bet_amount} into {pot} ({sizing_multiplier:.2f}x pot)", file=sys.stderr)
+                            return RaiseAction(bet_amount)
+            
+            # Add calling logic before defaulting to check/fold
+            if CallAction in legal_actions:
+                if relative_strength > 0.60:  # Call with top 40% of hands
+                    print(f"Calling turn with strong hand ({relative_strength:.1%} equity)", file=sys.stderr)
+                    return CallAction()
+            
+            # Default to checking if possible
+            if CheckAction in legal_actions:
+                print(f"Turn check by default", file=sys.stderr)
+                return CheckAction()
+            
+            print(f"Turn fold - weak hand", file=sys.stderr)
+            return FoldAction()
+
         # RIVER STRATEGY
         elif street == 5:
-            # Only raise nutted hands on river (90%+ equity)
-            if relative_strength > 0.90:
+            # Calculate pot odds for calling
+            call_amount = max(0, opp_contrib - my_contrib)
+            if call_amount > 0:
+                pot_odds = pot / call_amount
+                required_equity = 1 / (1 + pot_odds)
+                print(f"River pot odds: {pot_odds:.2f}:1 (need {required_equity:.1%} equity)", file=sys.stderr)
+            
+            # Always bet/raise with the nuts (>95% equity)
+            if relative_strength > 0.95:
                 if RaiseAction in legal_actions:
                     min_raise, max_raise = round_state.raise_bounds()
-                    bet_amount = min(max_raise, int(pot * 0.75))
-                    print(f"Value betting river with very strong hand: {bet_amount} into {pot}", file=sys.stderr)
+                    # Size up with the nuts - bet pot
+                    bet_amount = min(max_raise, pot)
+                    print(f"Value betting river with nuts: {bet_amount} into {pot}", file=sys.stderr)
                     return RaiseAction(bet_amount)
-            # Call with good but not great hands
-            elif relative_strength > 0.75 and CallAction in legal_actions:
-                print(f"Calling river with good hand", file=sys.stderr)
+                elif CallAction in legal_actions:
+                    print(f"Calling river with nuts", file=sys.stderr)
+                    return CallAction()
+            
+            # If facing a bet, check if we have sufficient pot odds to call
+            if CallAction in legal_actions and call_amount > 0:
+                if relative_strength < required_equity:
+                    print(f"Folding river - insufficient equity ({relative_strength:.1%} < {required_equity:.1%})", file=sys.stderr)
+                    return FoldAction()
+            
+            # Betting strategy based on previous street action
+            if RaiseAction in legal_actions:
+                previous_bets = self.current_round_raises
+                
+                # No previous betting - polarized range (bet bottom 10% and top 40%)
+                if previous_bets == 0:
+                    if relative_strength > 0.60 or relative_strength < 0.10:
+                        bet_amount = min(round_state.raise_bounds()[1], int(pot * 0.75))
+                        print(f"River bet with {'strong value' if relative_strength > 0.60 else 'bluff'}: {bet_amount} into {pot}", file=sys.stderr)
+                        return RaiseAction(bet_amount)
+                
+                # One street bet - tighter range (bet bottom 8% and top 25%)
+                elif previous_bets == 1:
+                    if relative_strength > 0.75 or relative_strength < 0.08:
+                        bet_amount = min(round_state.raise_bounds()[1], int(pot * 0.66))
+                        print(f"River bet after 1 street: {bet_amount} into {pot}", file=sys.stderr)
+                        return RaiseAction(bet_amount)
+                
+                # Two streets bet - very tight range (bet bottom 5% and top 15%)
+                elif previous_bets == 2:
+                    if relative_strength > 0.85 or relative_strength < 0.05:
+                        bet_amount = min(round_state.raise_bounds()[1], int(pot * 0.5))
+                        print(f"River bet after 2 streets: {bet_amount} into {pot}", file=sys.stderr)
+                        return RaiseAction(bet_amount)
+            
+            # If we have a decent hand and facing a bet, call
+            if CallAction in legal_actions and relative_strength >= required_equity:
+                print(f"Calling river with sufficient equity ({relative_strength:.1%} >= {required_equity:.1%})", file=sys.stderr)
                 return CallAction()
             
-        # Default actions if nothing else matched
-        if CheckAction in legal_actions:
-            print(f"Checking by default", file=sys.stderr)
-            return CheckAction()
-        elif CallAction in legal_actions:
-            call_amount = max(0, opp_contrib - my_contrib)
-            if pot / call_amount >= 4:  # Getting 4:1 or better
-                print(f"Calling by default with good odds", file=sys.stderr)
-                return CallAction()
-        
-        print(f"Folding by default", file=sys.stderr)
-        return FoldAction()
+            # Default to checking if possible
+            if CheckAction in legal_actions:
+                print(f"Checking river by default", file=sys.stderr)
+                return CheckAction()
+            
+            print(f"Folding river by default", file=sys.stderr)
+            return FoldAction()
 
 
 if __name__ == '__main__':
