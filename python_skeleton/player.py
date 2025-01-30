@@ -619,24 +619,10 @@ class Player(Bot):
             can_raise = RaiseAction in legal_actions
             min_raise, max_raise = round_state.raise_bounds() if can_raise else (0, 0)
             
-            if hero_preflop_aggressor and self.current_round_raises >= 2:  # 3bet+ pot
-                if board_favor == 'aggressor':
-                    action_rand = random.random()
-                    
-                    if can_raise and min_raise <= int(pot * 0.33) <= max_raise:
-                        if action_rand < 0.80:  # 80% small bet
-                            bet_amount = int(pot * 0.33)
-                            print(f"Small cbet on aggressor-favored board: {bet_amount} into {pot}", file=sys.stderr)
-                            return RaiseAction(bet_amount)
-                        elif action_rand < 0.90:  # 10% large bet
-                            bet_amount = min(max_raise, pot)
-                            print(f"Large cbet on aggressor-favored board: {bet_amount} into {pot}", file=sys.stderr)
-                            return RaiseAction(bet_amount)
-            
             if hero_preflop_aggressor:
-                if relative_strength > 0.75:
-                    if can_raise and min_raise <= int(pot * 0.66) <= max_raise:
-                        bet_amount = int(pot * 0.66)
+                if relative_strength > 0.85:  # Increase threshold for strong hands
+                    if can_raise and min_raise <= int(pot * 0.75) <= max_raise:
+                        bet_amount = int(pot * 0.75)  # Larger bet size for strong hands
                         print(f"Betting flop as preflop aggressor: {bet_amount} into {pot}", file=sys.stderr)
                         return RaiseAction(bet_amount)
             
@@ -695,7 +681,7 @@ class Player(Bot):
             
             # If facing a raise of our bet
             if self.current_round_raises >= 2:
-                if can_raise and relative_strength > 0.8:  # Very strong hand
+                if can_raise and relative_strength > 0.8:  # Increase threshold for strong hands
                     # Calculate a 2.5x raise
                     intended_raise = min(max_raise, opp_contrib + (opp_contrib - my_contrib))
                     if min_raise <= intended_raise <= max_raise:
@@ -719,8 +705,8 @@ class Player(Bot):
             
             # If we can only check or raise
             if CheckAction in legal_actions:
-                if can_raise and relative_strength > 0.7:  # Strong hand
-                    bet_amount = min(max_raise, int(pot * 0.66))  # 2/3 pot bet
+                if can_raise and relative_strength > 0.8:  # Strong hand
+                    bet_amount = min(max_raise, int(pot * 0.75))  # Larger bet size for strong hands
                     if min_raise <= bet_amount:
                         print(f"Turn value bet: {bet_amount}", file=sys.stderr)
                         return RaiseAction(bet_amount)
@@ -821,6 +807,13 @@ class Player(Bot):
             if CheckAction in legal_actions:
                 print(f"Checking river by default", file=sys.stderr)
                 return CheckAction()
+            
+            # Bluffing opportunity
+            if relative_strength < 0.3 and board_favor == 'aggressor':
+                if can_raise and min_raise <= int(pot * 0.5) <= max_raise:
+                    bet_amount = int(pot * 0.5)
+                    print(f"Bluffing river: {bet_amount} into {pot}", file=sys.stderr)
+                    return RaiseAction(bet_amount)
             
             print(f"Folding river by default", file=sys.stderr)
             return FoldAction()
